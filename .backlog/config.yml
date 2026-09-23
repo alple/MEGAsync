@@ -1,0 +1,18 @@
+project_name: "MEGAsync"
+default_status: "Backlog"
+statuses: ["Backlog", "To Do", "In Progress", "Testing", "Done"]
+types: ["bug", "feature", "enhancement", "task", "chore", "docs", "spike", "epic", "initiative"]
+labels: []
+definition_of_done: []
+date_format: yyyy-mm-dd
+max_column_width: 20
+default_editor: "geany"
+auto_open_browser: false
+default_port: 6444
+remote_operations: false
+auto_commit: false
+filesystem_only: false
+bypass_git_hooks: true
+check_active_branches: false
+active_branch_days: 30
+task_prefix: "MEGA"

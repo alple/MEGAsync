@@ -1,0 +1,43 @@
+#!/bin/sh
+# Kilo Code Worktree Setup Script
+# This script runs before the agent starts in a worktree (new sessions only).
+#
+# Available environment variables:
+#   WORKTREE_PATH  - Absolute path to the worktree directory
+#   REPO_PATH      - Absolute path to the main repository
+#
+# Kilo already copies root-level .env and .env.* files before this script runs.
+# Use this script for dependencies, nested env files, local config, databases,
+# certificates, or other project-specific setup that is not committed to git.
+#
+# Example tasks:
+#   - Copy nested env files from main repo
+#   - Install dependencies
+#   - Run database migrations
+#   - Set up local configuration
+
+set -e  # Exit on error
+
+echo "Setting up worktree: $WORKTREE_PATH"
+
+# Uncomment and modify as needed:
+
+# Copy a nested environment file
+# if [ -f "$REPO_PATH/apps/web/.env.local" ] && [ ! -f "$WORKTREE_PATH/apps/web/.env.local" ]; then
+#     cp "$REPO_PATH/apps/web/.env.local" "$WORKTREE_PATH/apps/web/.env.local"
+#     echo "Copied apps/web/.env.local"
+# fi
+
+# Install dependencies (Node.js)
+# if [ -f "$WORKTREE_PATH/package.json" ]; then
+#     cd "$WORKTREE_PATH"
+#     npm install
+# fi
+
+# Install dependencies (Python)
+# if [ -f "$WORKTREE_PATH/requirements.txt" ]; then
+#     cd "$WORKTREE_PATH"
+#     pip install -r requirements.txt
+# fi
+
+echo "Setup complete!"

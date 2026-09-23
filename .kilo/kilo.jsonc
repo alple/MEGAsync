@@ -1,0 +1,22 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "permission": {
+    "question": "ask"
+  },
+  "mcp": {
+    "backlog": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "backlog.md",
+        "mcp",
+        "start"
+      ],
+      "environment": {
+        "BACKLOG_CWD": "."
+      },
+      "enabled": true
+    }
+  }
+}

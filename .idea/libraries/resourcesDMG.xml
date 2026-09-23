@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="resourcesDMG">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/installer/macOS/resourcesDMG.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
