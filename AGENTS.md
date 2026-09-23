@@ -1,5 +1,15 @@
 # AGENTS.md (for AI agents & humans)
 
+## This is a private fork — read before changing anything
+
+This branch is a **personal extension of the upstream MEGAsync production app**, not a standalone project. It tracks upstream and is periodically updated with new upstream source, so merge conflicts are the main tax paid on every change. The rules below exist to keep that tax minimal and to keep the fork safe to run against the owner's real account and data.
+
+**Fork policy (applies to all code changes):**
+
+1. **Minimal surface.** Keep every change as small as possible and as close to the prod code's shape as possible. Prefer small additive edits over restructuring. Do not refactor, reformat, or "improve" untouched prod code — drift from upstream is the enemy.
+2. **Read-only by default.** Changes should observe or report, not alter behavior. The fork's additions must not influence how sync, transfer, update, or other prod mechanisms work. If a proposed change would influence or change the behavior of prod files or mechanisms: **stop and flag it**. Ask for explicit permission first, describing in plain language what behavior changes, when it takes effect (always? under a condition? only in a build config?), and the concrete risks — e.g. data loss in synced folders, broken auto-update, conflicts on the next upstream merge.
+3. **No personal data, no machine paths.** Never commit the owner's real name, account details, or absolute paths from their machine (`/home/alek/...` etc.) into source, configs, docs, or tickets. Use placeholders or environment-relative paths.
+
 ## Precedence (repo docs override skills)
 
 Skills (`.agents/skills/`) may be overwritten or reinstalled — conveniences, **not** the source of truth. On conflict, repo files win:
