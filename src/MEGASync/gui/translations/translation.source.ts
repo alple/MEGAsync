@@ -3429,6 +3429,10 @@ https://mega.co.nz/#sync</source>
         <translatorcomment>Label to indicate a contact of a user.</translatorcomment>
         <translation>contact</translation>
     </message>
+    <message>
+        <source>Review sync pairs</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>MegaError</name>
@@ -8782,6 +8786,229 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <source>You need Full access right to be able to sync the selected folder.</source>
         <translatorcomment>Error message shown when an user is trying sync a non compatible folder</translatorcomment>
         <translation>To sync this folder, you need to have full-access permission to it.</translation>
+    </message>
+</context>
+<context>
+    <name>SyncPreview::SyncPreviewConsequencesDialog</name>
+    <message>
+        <source>Consequences of the directory action</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applying the chosen action under &lt;b&gt;%1&lt;/b&gt; will:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Created on local disk</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overwritten locally (previous copy recoverable)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Removed locally (moved to the OS trash)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Created on MEGA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Overwritten remotely (previous copy to Rubbish)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Removed remotely (moved to MEGA Rubbish)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Warnings</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No files under this directory are affected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished">Apply</translation>
+    </message>
+</context>
+<context>
+    <name>SyncPreview::SyncPreviewDialog</name>
+    <message>
+        <source>%1 item(s) awaiting approval</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>all flagged items approved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Commit pair</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opens the pre-filled create-sync dialog (Stage 5)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Sync pre-commit review</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The commit flow arrives in Stage 5; the reviewed decisions are already persisted.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation type="unfinished">Remove</translation>
+    </message>
+    <message>
+        <source>Remove pair</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remove this pair from the review queue?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Load more (%1 remaining)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Identical twin: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Under a blocked path: resolve the blocker above first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not resolvable by a transfer: needs rename/exclusion (later stage)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No pairs queued yet — add a demo pair.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 pair(s) queued — everything flagged is approved.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 pair(s) queued — %2 item(s) awaiting approval.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SyncPreview::SyncPreviewFakePairPicker</name>
+    <message>
+        <source>Add a demo pair (fake data)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>These are canned fake pairs standing in for real local/remote folders until Stage 5. Pick one to add it to the review queue.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The pair label doubles as the fake-data source, so restored pairs re-scan to the same scenario.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add pair</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SyncPreview::SyncPreviewRowWidget</name>
+    <message>
+        <source>Approved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>(classification changed — re-approve)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>L→R</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>R→L</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Best-effort</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Do nothing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> — recommended</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SyncPreviewDialog</name>
+    <message>
+        <source>Sync pre-commit review</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Add pair…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filter:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filter rows by path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Group by pair</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show in-sync items</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Local size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Local modified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote size</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote modified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Newer side</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Action &amp; approval</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished">Close</translation>
     </message>
 </context>
 <context>

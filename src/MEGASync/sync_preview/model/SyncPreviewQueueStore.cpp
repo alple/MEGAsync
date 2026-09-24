@@ -64,6 +64,7 @@ namespace SyncPreview
             pairJson.insert(QStringLiteral("localPath"), pair.localPath);
             pairJson.insert(QStringLiteral("remotePath"), pair.remotePath);
             pairJson.insert(QStringLiteral("remoteHandle"), pair.remoteHandle);
+            pairJson.insert(QStringLiteral("completed"), pair.completed);
 
             QJsonArray decisionsJson;
             for (const RowDecision& decision : pair.decisions)
@@ -72,6 +73,8 @@ namespace SyncPreview
                 decisionJson.insert(QStringLiteral("path"), decision.relativePath);
                 decisionJson.insert(QStringLiteral("action"), actionToString(decision.action));
                 decisionJson.insert(QStringLiteral("approved"), decision.approved);
+                decisionJson.insert(QStringLiteral("kind"), decision.kind);
+                decisionJson.insert(QStringLiteral("requiresApproval"), decision.requiresApproval);
                 decisionsJson.append(decisionJson);
             }
             pairJson.insert(QStringLiteral("decisions"), decisionsJson);
@@ -95,7 +98,12 @@ namespace SyncPreview
         }
 
         const QJsonObject root = document.object();
-        if (!root.contains(QLatin1String("schemaVersion")) || root.value(QLatin1String("schemaVersion")).toInt(-1) != SCHEMA_VERSION)
+        const int schemaVersion = root.value(QLatin1String("schemaVersion")).toInt(-1);
+        // v1 predates the kind/requiresApproval snapshots and the completed
+        // flag: those deserialize to their defaults and the re-verify pass
+        // re-flags the decisions on first restore. Any other version is
+        // unsupported (all-or-nothing → empty queue).
+        if (schemaVersion != SCHEMA_VERSION && schemaVersion != SCHEMA_VERSION_V1)
         {
             return queue;
         }
@@ -125,6 +133,9 @@ namespace SyncPreview
             {
                 return Queue();
             }
+            // Optional since v1 files lack it (also tolerated missing in v2).
+            pair.completed = pairJson.contains(QLatin1String("completed")) &&
+                pairJson.value(QLatin1String("completed")).toBool(false);
 
             if (pairJson.contains(QLatin1String("decisions")))
             {
@@ -159,6 +170,29 @@ namespace SyncPreview
                         return Queue();
                     }
                     decision.approved = decisionJson.value(QLatin1String("approved")).toBool(false);
+
+                    // Snapshots are optional (v1 files predate them): absent
+                    // kind keeps UNKNOWN_KIND so the re-verify pass re-flags
+                    // the decision. Present-but-non-int is a structural
+                    // violation.
+                    if (decisionJson.contains(QLatin1String("kind")))
+                    {
+                        const QJsonValue kindValue = decisionJson.value(QLatin1String("kind"));
+                        if (!kindValue.isDouble())
+                        {
+                            return Queue();
+                        }
+                        decision.kind = kindValue.toInt(RowDecision::UNKNOWN_KIND);
+                    }
+                    if (decisionJson.contains(QLatin1String("requiresApproval")))
+                    {
+                        if (!decisionJson.value(QLatin1String("requiresApproval")).isBool())
+                        {
+                            return Queue();
+                        }
+                        decision.requiresApproval =
+                            decisionJson.value(QLatin1String("requiresApproval")).toBool(false);
+                    }
 
                     pair.decisions.append(decision);
                 }

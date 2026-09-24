@@ -8,13 +8,17 @@
 namespace SyncPreview
 {
     // Versioned JSON serialization of the pair queue and per-row decisions.
-    // Stage 1 provides the in-memory codec; the fork-owned JSON file in the
-    // app config directory is wired in a later stage (file I/O, atomic
-    // writes).
+    // Stage 1 provided the in-memory codec; Stage 2 adds the file-backed
+    // store (SyncPreviewQueueFileStore) and schema v2 (per-decision kind /
+    // requiresApproval snapshots, per-pair completed flag). Deserialization
+    // accepts schema v1 (fields absent → UNKNOWN_KIND snapshots, treated as
+    // changed by the re-verify pass) and v2; any other version yields an
+    // empty queue (all-or-nothing, per the MEGA-2 decision record).
     class QueueStore
     {
     public:
-        static constexpr int SCHEMA_VERSION = 1;
+        static constexpr int SCHEMA_VERSION = 2;
+        static constexpr int SCHEMA_VERSION_V1 = 1;
 
         static QByteArray serialize(const Queue& queue);
 

@@ -147,3 +147,87 @@ TEST_CASE("Empty queue round-trips")
 
     CHECK(queue.pairs.isEmpty());
 }
+
+TEST_CASE("Schema v2 round-trips snapshots and the completed flag")
+{
+    Queue queue;
+
+    Pair pair;
+    pair.id = QStringLiteral("pair-1");
+    pair.localPath = QStringLiteral("/tmp/local");
+    pair.remotePath = QStringLiteral("Cloud Drive/remote");
+    pair.remoteHandle = QStringLiteral("h");
+    pair.completed = true;
+
+    RowDecision conflict;
+    conflict.relativePath = QStringLiteral("old/b.txt");
+    conflict.action = Action::RemoteToLocal;
+    conflict.approved = true;
+    conflict.kind = static_cast<int>(RowKind::Conflict);
+    conflict.requiresApproval = true;
+
+    RowDecision plain;
+    plain.relativePath = QStringLiteral("docs/a.txt");
+    plain.action = Action::LocalToRemote;
+    plain.approved = false;
+    plain.kind = static_cast<int>(RowKind::LocalOnly);
+    plain.requiresApproval = false;
+
+    pair.decisions = {conflict, plain};
+    queue.pairs.append(pair);
+
+    const Queue restored = QueueStore::deserialize(QueueStore::serialize(queue));
+
+    REQUIRE(restored.pairs.size() == 1);
+    CHECK(restored.pairs.first().completed);
+    REQUIRE(restored.pairs.first().decisions.size() == 2);
+    CHECK(restored.pairs.first().decisions.at(0).kind == static_cast<int>(RowKind::Conflict));
+    CHECK(restored.pairs.first().decisions.at(0).requiresApproval);
+    CHECK(restored.pairs.first().decisions.at(1).kind == static_cast<int>(RowKind::LocalOnly));
+    CHECK_FALSE(restored.pairs.first().decisions.at(1).requiresApproval);
+}
+
+TEST_CASE("Schema v1 files deserialize with unknown snapshots")
+{
+    const Queue restored = QueueStore::deserialize(QByteArray(R"({
+        "schemaVersion": 1,
+        "pairs": [{
+            "id": "pair-1",
+            "localPath": "/tmp/local",
+            "remotePath": "Cloud Drive/remote",
+            "remoteHandle": "h",
+            "decisions": [{"path": "docs/a.txt", "action": "local-to-remote", "approved": true}]
+        }]
+    })"));
+
+    REQUIRE(restored.pairs.size() == 1);
+    CHECK_FALSE(restored.pairs.first().completed);
+    REQUIRE(restored.pairs.first().decisions.size() == 1);
+    CHECK(restored.pairs.first().decisions.first().kind == RowDecision::UNKNOWN_KIND);
+    CHECK_FALSE(restored.pairs.first().decisions.first().requiresApproval);
+    CHECK(restored.pairs.first().decisions.first().action == Action::LocalToRemote);
+}
+
+TEST_CASE("Structural violations still reject in v2")
+{
+    // pairs is not an array.
+    CHECK(QueueStore::deserialize(QByteArray(R"({"schemaVersion": 2, "pairs": {}})")).pairs.isEmpty());
+
+    // A decision with a non-integer kind snapshot.
+    CHECK(QueueStore::deserialize(QByteArray(R"({
+        "schemaVersion": 2,
+        "pairs": [{
+            "id": "x", "localPath": "l", "remotePath": "r", "remoteHandle": "h",
+            "decisions": [{"path": "f.txt", "action": "none", "approved": false, "kind": "blocker"}]
+        }]
+    })")).pairs.isEmpty());
+
+    // A decision with a non-boolean requiresApproval snapshot.
+    CHECK(QueueStore::deserialize(QByteArray(R"({
+        "schemaVersion": 2,
+        "pairs": [{
+            "id": "x", "localPath": "l", "remotePath": "r", "remoteHandle": "h",
+            "decisions": [{"path": "f.txt", "action": "none", "approved": false, "requiresApproval": "yes"}]
+        }]
+    })")).pairs.isEmpty());
+}

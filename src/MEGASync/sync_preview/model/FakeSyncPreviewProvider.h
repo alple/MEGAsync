@@ -59,6 +59,10 @@ namespace SyncPreview
 
         // Both sides empty (no rows).
         FakeScenario emptySides();
+
+        // `count` local-only files (plus one remote-only file) in the root:
+        // a long visible list exercising the row cap and load-more.
+        FakeScenario manyLocalOnlyFiles(int count);
     }
 }
 

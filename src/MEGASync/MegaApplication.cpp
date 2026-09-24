@@ -47,6 +47,7 @@
 #include "ServiceUrls.h"
 #include "StalledIssuesDialog.h"
 #include "StalledIssuesModel.h"
+#include "SyncPreviewDialog.h"
 #include "StatsEventHandler.h"
 #include "StreamingFromMegaDialog.h"
 #include "SyncController.h"
@@ -308,6 +309,7 @@ MegaApplication::MegaApplication(int& argc, char** argv):
     uploadAction = nullptr;
     downloadAction = nullptr;
     streamAction = nullptr;
+    syncPreviewReviewAction = nullptr;
     filesAction = nullptr;
     MEGAWebAction = nullptr;
     mWaiting = false;
@@ -6423,6 +6425,23 @@ void MegaApplication::createInfoDialogMenus()
                 &InfoDialog::onAddSync);
     }
 
+    // Fork (MEGA-2, Stage 2): pre-commit review entry. Stage 5 moves this
+    // into the Add-Sync wizard and adds the real commit flow.
+    recreateMegaMenuAction(&syncPreviewReviewAction,
+                           infoDialogMenu,
+                           tr("Review sync pairs"),
+                           Utilities::getPixmapName(QLatin1String("sync-01"),
+                                                    Utilities::AttributeType::SMALL |
+                                                        Utilities::AttributeType::THIN |
+                                                        Utilities::AttributeType::OUTLINE,
+                                                    false)
+                               .toStdString()
+                               .c_str(),
+                           []()
+                           {
+                               MegaApplication::showSyncPreviewDialog();
+                           });
+
     recreateMegaMenuAction(&importLinksAction,
                            infoDialogMenu,
                            tr("Open links"),
@@ -6520,6 +6539,7 @@ void MegaApplication::createInfoDialogMenus()
         infoDialogMenu->addAction(mSyncs2waysMenu->getAction());
     if (mBackupsMenu)
         infoDialogMenu->addAction(mBackupsMenu->getAction());
+    infoDialogMenu->addAction(syncPreviewReviewAction);
     infoDialogMenu->addAction(importLinksAction);
     infoDialogMenu->addAction(uploadAction);
     infoDialogMenu->addAction(downloadAction);
@@ -7579,6 +7599,23 @@ void MegaApplication::showStalledIssuesDialog()
         auto newStalledIssuesDialog = new StalledIssuesDialog();
         DialogOpener::showDialog<StalledIssuesDialog>(newStalledIssuesDialog);
 				}
+}
+
+// Fork (MEGA-2, Stage 2): the pre-commit review dialog on fake data. The
+// queue and decisions persist in the app data directory, so closing and
+// reopening restores the state (MEGA-2.2 AC #8).
+void MegaApplication::showSyncPreviewDialog()
+{
+    auto dialog = DialogOpener::findDialog<SyncPreview::SyncPreviewDialog>();
+    if (dialog)
+    {
+        DialogOpener::showDialog(dialog->getDialog());
+    }
+    else
+    {
+        auto newSyncPreviewDialog = new SyncPreview::SyncPreviewDialog();
+        DialogOpener::showDialog<SyncPreview::SyncPreviewDialog>(newSyncPreviewDialog);
+    }
 }
 
 

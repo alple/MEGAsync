@@ -46,6 +46,9 @@ set(UNIT_TEST_FILES
     sync_preview/SyncPreviewDemoTests.cpp
     sync_preview/SyncPreviewPlannerTests.cpp
     sync_preview/SyncPreviewQueueStoreTests.cpp
+    sync_preview/SyncPreviewQueueFileStoreTests.cpp
+    sync_preview/SyncPreviewReconcilerTests.cpp
+    sync_preview/SyncPreviewPairControllerTests.cpp
 )
 
 if(USE_BREAKPAD)

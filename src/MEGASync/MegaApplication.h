@@ -206,6 +206,9 @@ public:
     void updateUsedStorage(const bool sendEvent = false);
     void showUpsellDialog(UpsellPlans::ViewMode viewMode);
     static void showStalledIssuesDialog();
+    // Fork (MEGA-2, Stage 2): pre-commit review dialog on fake data. The
+    // real commit flow and the wizard entry arrive in Stage 5.
+    static void showSyncPreviewDialog();
     bool isOnboarding();
 
 signals:
@@ -390,6 +393,8 @@ protected:
     MegaMenuItemAction* uploadAction;
     MegaMenuItemAction* downloadAction;
     MegaMenuItemAction* streamAction;
+    // Fork (MEGA-2): review-sync entry, shown while logged in.
+    MegaMenuItemAction* syncPreviewReviewAction;
     MegaMenuItemAction* filesAction;
     MegaMenuItemAction* MEGAWebAction;
     MegaMenuItemAction* updateAction = nullptr;

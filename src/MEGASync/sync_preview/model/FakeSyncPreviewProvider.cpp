@@ -154,4 +154,21 @@ namespace SyncPreview
     {
         return {};
     }
+
+    FakeScenario FakeScenarios::manyLocalOnlyFiles(int count)
+    {
+        FakeTreeBuilder localBuilder;
+        FakeTreeBuilder remoteBuilder;
+
+        for (int i = 0; i < count; ++i)
+        {
+            localBuilder.addFile(QStringLiteral("file-%1.txt").arg(i, 4, 10, QLatin1Char('0')),
+                                 100 + i,
+                                 1000 + i,
+                                 QStringLiteral("local-only-%1").arg(i).toUtf8());
+        }
+        remoteBuilder.addFile(QStringLiteral("remote-only.txt"), 25, 800, "only-remote");
+
+        return {localBuilder.build(), remoteBuilder.build()};
+    }
 }
