@@ -7,7 +7,7 @@ status: Testing
 assignee:
   - agent
 created_date: '2026-09-24 14:45'
-updated_date: '2026-09-24 15:08'
+updated_date: '2026-09-24 18:49'
 labels:
   - sync-preview
 milestone: Sync pre-commit review
@@ -94,38 +94,41 @@ Risks/notes:
 
 <!-- SECTION:NOTES:BEGIN -->
 Claimed by agent session 2026-09-24. Blockers MEGA-2.2/MEGA-2.1 in Testing — startable under soft-frontier rule; builds on unreviewed work.
+
+Feedback 2026-09-24 (Testing): the delivered detail view is one 7-column table, not two visible panes — user wants separate left/right TREE panes, synchronized (MC-style). Reworking the detail window into three side-by-side views: local tree | action strip | remote tree, row-locked.
+
+2026-09-24: second Testing feedback — "ugly and not usable, could we integrate some tree comparator like meld". Direction decided with user: port meld's folder-diff presentation in-app; embedding/external meld ruled out (GPLv2 + GTK; remote side is cloud data). Split off into MEGA-2.8 (meld-style per-side states, status columns, Same/Different/New filters, entry icons). This ticket stays in Testing for the pair-first list + two-pane lock-step mechanics; look-and-feel rework is MEGA-2.8.
 <!-- SECTION:NOTES:END -->
 
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
-Stage 2 UI rework per MEGA-2.2 Testing feedback: pair-first list + MC-style detail windows + theme-token readability.
+Stage 2 UI rework (MEGA-2.7) — second iteration per Testing feedback: "it doesn't have the two pane! I should be able to see the tree on left and right panes synchronized".
 
-## What changed
+## The fix
 
-**Stage-1 core (additive only)**
-- `SyncPreviewPairController.{h,cpp}`: new `PairSummary` struct + `PairController::summary(pairId)` — whole-subtree per-side stats (bytes/files/dirs from the classification) plus the pending-transfer delta per side (created+changed bytes/files, removed-path counts, from the current plan). Dedupes consequence paths per type because directory rows aggregate self-planning descendants. No behavior change anywhere else.
-- New tests: "summarizes subtree stats and the pending delta", "summary dedupes cascaded directory consequences".
+The first delivery put all seven columns in ONE QTreeWidget — visually a single table, not two panes. The detail window is now three side-by-side views inside a QSplitter (user-resizable side panes, fixed action strip):
 
-**Main dialog → pair list (`SyncPreviewDialog.{h,cpp}` + reworked `.ui`)**
-- The combined 7-column table is gone. Initial view is a list of queued pairs, one row per pair: bold pair label + gated "Commit pair" (tooltip Stage 5, still QMessageBox) + "Remove" (confirm), a stats line (per-side files/dirs/bytes) and a pending line (both full-subtree and delta shown, per user's answer). Awaiting-approval note colored text-warning/text-success.
-- Filter is pair-name-only (local/remote path match); "Group by pair" removed; "Show in-sync items" moved into the detail window.
-- Opening a pair (Review… button or double-click) opens its detail window; one window per pair, re-open raises.
+- **Left pane** (`leftTree`): local tree — columns Path | Size | Modified
+- **Middle strip** (`midTree`, fixed 380px): one column "Action & approval", the existing `SyncPreviewRowWidget` (combo L→R / R→L / Best-effort / None + approve checkbox) per row via setItemWidget
+- **Right pane** (`rightTree`): remote tree — columns Path | Size | Modified
 
-**Detail window (new `SyncPreviewPairDetailDialog.{h,cpp}` + `.ui`)**
-- MC-style dual pane: tree columns [Local path | Local size | Local modified | **Action & approval** | Remote path | Remote size | Remote modified]; the existing `SyncPreviewRowWidget` (action combo L→R / R→L / Best-effort / None + approve checkbox) sits in the middle column via setItemWidget. Each pane spells the entry as its own side holds it; missing side shows "—".
-- Kept per-pair: path filter, Show-in-sync toggle (identical rows hidden by default), kRowCap=200 load-more, re-flag badges/tooltips, newer-side marker (folded into the badge area), directory-action consequences popup flow (moved here), non-modal, WA_DeleteOnClose, self-closes when its pair is removed.
+### Synchronization (row lock-step)
+- Every classified path is ONE row index on all three views: each visible row is added to left/mid/right in lock-step. A side that misses the entry shows "—" in its pane cell, so panes always line up.
+- Uniform fixed row height (40px) on every item in every view — identical row geometry is what makes the lock-step hold.
+- Vertical scroll sync three-way (left ↔ mid ↔ right) with a reentrancy guard.
+- Selection sync: selecting a row in the left pane selects the same row in the right pane and vice versa (middle strip is non-selecting).
+- Alternating banding (page-background / surface-1 tokens) on both tree panes reads as one continuous band across panes; splitter is non-collapsible; middle strip has fixed min/max width.
+- Each pane spells the entry as its own side holds it (conflict rows may differ per side); badges/tooltips sit on the left pane's path cell.
 
-**Readability (AC #4)**
-- All colors now come from `TokenParserWidgetManager` tokens: row foregrounds (text-primary / text-secondary for identical+covered rows / text-error for blockers / text-warning for re-flagged), list+tree palettes (page-background, surface-1 alternating, surface-inverse-accent selection), stats/awaiting labels. Both dialogs + the consequences popup register with `registerWidgetForTheming`, so the prod standard-components styling applies and live theme changes re-theme light and dark.
-- Root cause of the greyed-row complaint: row combos/checkboxes lacked the `type="mega"` property the app's themed components key on, so they fell back to native Qt styling whose disabled grey is unreadable. Now set (on the combo + checkbox), plus a scoped disabled-combo override to the higher-contrast text-secondary token.
-- Both dialogs rebuild on ThemeManager::themeChanged so token-derived colors re-resolve.
+### Kept from the first delivery
+Pair list main dialog unchanged; per-pair path filter + Show-in-sync toggle + kRowCap load-more; consequences popup flow; re-flag badges/tooltips; theme-token colors and palettes (now applied to all three views); rebuild on ThemeManager::themeChanged; non-modal one-window-per-pair detail windows; self-close on pair removal.
 
 ## Verification
-- `just build` compiles clean; `just test` all green (108 test cases, 646 assertions), including the two new summary tests.
-- Visual QA pending user testing (GUI not exercisable headless here); fake data only, no real API calls, Stage-5 touch points untouched.
+- `just build` compiles clean; `just test` all green (108 test cases, 646 assertions). Model untouched in this pass (no new controller changes).
+- Visual QA pending user testing: panes should scroll/select in lock-step; drag the splitter to resize the two panes.
 
-## Notes for testing
-- Delta semantics discovered while testing: with NO explicit decisions, the recommended plan already cascades single-sided directories (subtree upload/download), so "pending" is non-empty out of the box — that is Stage-1 planner behavior, not a regression; the pair list shows it as e.g. "pending: 1 file(s) to remote (30 B)".
-- Delta bytes = source-side sizes of created+changed files; removals are counted, not summed into bytes (nothing transfers for them).
+## Testing notes (unchanged)
+- "Pending" is non-empty with no explicit decisions — Stage-1 planner cascades single-sided directories by recommendation.
+- Delta bytes = source-side sizes of created+changed files; removals counted, not summed.
 <!-- SECTION:FINAL_SUMMARY:END -->

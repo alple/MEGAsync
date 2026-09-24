@@ -71,54 +71,87 @@
     </layout>
    </item>
    <item>
-    <widget class="QTreeWidget" name="rowsTree">
-     <property name="alternatingRowColors">
-      <bool>true</bool>
+    <widget class="QSplitter" name="panesSplitter">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
      </property>
-     <property name="rootIsDecorated">
+     <property name="childrenCollapsible">
       <bool>false</bool>
      </property>
-     <property name="uniformRowHeights">
-      <bool>true</bool>
-     </property>
-     <property name="allColumnsShowFocus">
-      <bool>true</bool>
-     </property>
-     <column>
-      <property name="text">
-       <string>Local path</string>
+     <widget class="QTreeWidget" name="leftTree">
+      <property name="alternatingRowColors">
+       <bool>true</bool>
       </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Local size</string>
+      <property name="rootIsDecorated">
+       <bool>false</bool>
       </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Local modified</string>
+      <property name="uniformRowHeights">
+       <bool>true</bool>
       </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Action &amp; approval</string>
+      <property name="allColumnsShowFocus">
+       <bool>true</bool>
       </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Remote path</string>
+      <column>
+       <property name="text">
+        <string>Local path</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>Size</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>Modified</string>
+       </property>
+      </column>
+     </widget>
+     <widget class="QTreeWidget" name="midTree">
+      <property name="rootIsDecorated">
+       <bool>false</bool>
       </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Remote size</string>
+      <property name="uniformRowHeights">
+       <bool>true</bool>
       </property>
-     </column>
-     <column>
-      <property name="text">
-       <string>Remote modified</string>
+      <property name="selectionMode">
+       <enum>QAbstractItemView::NoSelection</enum>
       </property>
-     </column>
+      <column>
+       <property name="text">
+        <string>Action &amp; approval</string>
+       </property>
+      </column>
+     </widget>
+     <widget class="QTreeWidget" name="rightTree">
+      <property name="alternatingRowColors">
+       <bool>true</bool>
+      </property>
+      <property name="rootIsDecorated">
+       <bool>false</bool>
+      </property>
+      <property name="uniformRowHeights">
+       <bool>true</bool>
+      </property>
+      <property name="allColumnsShowFocus">
+       <bool>true</bool>
+      </property>
+      <column>
+       <property name="text">
+        <string>Remote path</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>Size</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>Modified</string>
+       </property>
+      </column>
+     </widget>
     </widget>
    </item>
    <item>

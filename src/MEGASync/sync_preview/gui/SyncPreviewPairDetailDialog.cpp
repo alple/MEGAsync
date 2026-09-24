@@ -16,6 +16,8 @@
 #include <QPalette>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSplitter>
+#include <QTreeWidget>
 #include <QTreeWidgetItem>
 
 namespace SyncPreview
@@ -24,15 +26,17 @@ namespace SyncPreview
     {
         constexpr int kRowCap = 200;
 
-        // Columns of the MC-style row: local pane | action | remote pane.
-        constexpr int kColLocalPath = 0;
-        constexpr int kColLocalSize = 1;
-        constexpr int kColLocalModified = 2;
-        constexpr int kColAction = 3;
-        constexpr int kColRemotePath = 4;
-        constexpr int kColRemoteSize = 5;
-        constexpr int kColRemoteModified = 6;
-        constexpr int kColCount = 7;
+        // Uniform row height shared by all three panes: the row lock-step
+        // (scroll/selection sync) relies on every view laying out the same
+        // rows at the same heights.
+        constexpr int kRowHeight = 40;
+
+        // Fixed width of the action strip between the two panes.
+        constexpr int kMidWidth = 380;
+
+        constexpr int kColPath = 0;
+        constexpr int kColSize = 1;
+        constexpr int kColModified = 2;
     }
 
     SyncPreviewPairDetailDialog::SyncPreviewPairDetailDialog(const QString& pairId,
@@ -79,56 +83,90 @@ namespace SyncPreview
                 close();
             }
         });
-        // Per-row foregrounds and the tree palette are token colors resolved
-        // at populate time: re-resolve when the theme changes so both color
-        // schemas read well.
+        // Per-row foregrounds and the panes' palettes are token colors
+        // resolved at populate time: re-resolve when the theme changes so
+        // both color schemas read well.
         connect(ThemeManager::instance(), &ThemeManager::themeChanged, this, [this]()
         {
-            applyTreePalette();
+            applyPanesPalette();
             rebuild();
         });
 
-        setupColumns();
-        applyTreePalette();
+        setupPanes();
+        applyPanesPalette();
         mShownCount = kRowCap;
         rebuild();
     }
 
     SyncPreviewPairDetailDialog::~SyncPreviewPairDetailDialog() = default;
 
-    void SyncPreviewPairDetailDialog::setupColumns()
+    void SyncPreviewPairDetailDialog::setupPanes()
     {
-        QTreeWidget* tree = mUi->rowsTree;
-        tree->setSortingEnabled(false);
-        QHeaderView* header = tree->header();
-        header->setSectionResizeMode(kColLocalPath, QHeaderView::Stretch);
-        header->setSectionResizeMode(kColLocalSize, QHeaderView::Fixed);
-        header->setSectionResizeMode(kColLocalModified, QHeaderView::Fixed);
-        header->setSectionResizeMode(kColAction, QHeaderView::Interactive);
-        header->setSectionResizeMode(kColRemotePath, QHeaderView::Stretch);
-        header->setSectionResizeMode(kColRemoteSize, QHeaderView::Fixed);
-        header->setSectionResizeMode(kColRemoteModified, QHeaderView::Fixed);
-        tree->setColumnWidth(kColLocalSize, 90);
-        tree->setColumnWidth(kColLocalModified, 130);
-        tree->setColumnWidth(kColAction, 380);
-        tree->setColumnWidth(kColRemoteSize, 90);
-        tree->setColumnWidth(kColRemoteModified, 130);
+        QTreeWidget* midTree = mUi->midTree;
+        midTree->setSelectionMode(QAbstractItemView::NoSelection);
+        midTree->setFocusPolicy(Qt::NoFocus);
+        midTree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
+        midTree->setMinimumWidth(kMidWidth);
+        midTree->setMaximumWidth(kMidWidth);
+
+        for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
+        {
+            tree->setSelectionMode(QAbstractItemView::SingleSelection);
+            QHeaderView* header = tree->header();
+            header->setSectionResizeMode(kColPath, QHeaderView::Stretch);
+            header->setSectionResizeMode(kColSize, QHeaderView::Fixed);
+            header->setSectionResizeMode(kColModified, QHeaderView::Fixed);
+            tree->setColumnWidth(kColSize, 90);
+            tree->setColumnWidth(kColModified, 130);
+        }
+
+        QSplitter* splitter = mUi->panesSplitter;
+        splitter->setStretchFactor(0, 1);
+        splitter->setStretchFactor(1, 0);
+        splitter->setStretchFactor(2, 1);
+
+        // Row lock-step: scrolling one pane scrolls all three; selecting a
+        // row in a pane selects the same row in the sibling pane.
+        for (QTreeWidget* tree : {mUi->leftTree, mUi->midTree, mUi->rightTree})
+        {
+            connect(tree->verticalScrollBar(), &QScrollBar::valueChanged, this, [this, tree]()
+            {
+                syncScrollFrom(tree->verticalScrollBar());
+            });
+        }
+        connect(mUi->leftTree, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem*, QTreeWidgetItem*)
+        {
+            if (!mSyncingPanes)
+            {
+                syncSelectionFrom(mUi->leftTree);
+            }
+        });
+        connect(mUi->rightTree, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem*, QTreeWidgetItem*)
+        {
+            if (!mSyncingPanes)
+            {
+                syncSelectionFrom(mUi->rightTree);
+            }
+        });
     }
 
-    void SyncPreviewPairDetailDialog::applyTreePalette()
+    void SyncPreviewPairDetailDialog::applyPanesPalette()
     {
         // Theme tokens instead of ad-hoc greys: rows and alternating bands
         // use the app's surface colors, selection uses the app's inverse
         // accent, so both color schemas keep sufficient contrast.
-        QPalette palette = mUi->rowsTree->palette();
         auto theme = TokenParserWidgetManager::instance();
-        palette.setColor(QPalette::Base, theme->getColor(QLatin1String("page-background")));
-        palette.setColor(QPalette::AlternateBase, theme->getColor(QLatin1String("surface-1")));
-        palette.setColor(QPalette::Text, theme->getColor(QLatin1String("text-primary")));
-        palette.setColor(QPalette::WindowText, theme->getColor(QLatin1String("text-primary")));
-        palette.setColor(QPalette::Highlight, theme->getColor(QLatin1String("surface-inverse-accent")));
-        palette.setColor(QPalette::HighlightedText, theme->getColor(QLatin1String("text-inverse-accent")));
-        mUi->rowsTree->setPalette(palette);
+        for (QTreeWidget* tree : {mUi->leftTree, mUi->midTree, mUi->rightTree})
+        {
+            QPalette palette = tree->palette();
+            palette.setColor(QPalette::Base, theme->getColor(QLatin1String("page-background")));
+            palette.setColor(QPalette::AlternateBase, theme->getColor(QLatin1String("surface-1")));
+            palette.setColor(QPalette::Text, theme->getColor(QLatin1String("text-primary")));
+            palette.setColor(QPalette::WindowText, theme->getColor(QLatin1String("text-primary")));
+            palette.setColor(QPalette::Highlight, theme->getColor(QLatin1String("surface-inverse-accent")));
+            palette.setColor(QPalette::HighlightedText, theme->getColor(QLatin1String("text-inverse-accent")));
+            tree->setPalette(palette);
+        }
     }
 
     void SyncPreviewPairDetailDialog::rebuild()
@@ -141,10 +179,8 @@ namespace SyncPreview
             return;
         }
 
-        const int scrollPosition = mUi->rowsTree->verticalScrollBar()->value();
         repopulate();
         updateSummary();
-        mUi->rowsTree->verticalScrollBar()->setValue(scrollPosition);
     }
 
     void SyncPreviewPairDetailDialog::repopulate()
@@ -157,8 +193,22 @@ namespace SyncPreview
         const QString filter = mUi->pathFilterEdit->text();
         const bool showInSync = mUi->showInSyncToggle->isChecked();
 
-        QTreeWidget* tree = mUi->rowsTree;
-        tree->clear();
+        auto theme = TokenParserWidgetManager::instance();
+        const QColor normalColor = theme->getColor(QLatin1String("text-primary"));
+        const QColor secondaryColor = theme->getColor(QLatin1String("text-secondary"));
+        const QColor errorColor = theme->getColor(QLatin1String("text-error"));
+        const QColor warningColor = theme->getColor(QLatin1String("text-warning"));
+
+        QTreeWidget* leftTree = mUi->leftTree;
+        QTreeWidget* midTree = mUi->midTree;
+        QTreeWidget* rightTree = mUi->rightTree;
+
+        const int scrollPosition = leftTree->verticalScrollBar()->value();
+        leftTree->clear();
+        midTree->clear();
+        rightTree->clear();
+
+        static const RowPlan emptyPlan;
 
         int displayed = 0;
         int remaining = 0;
@@ -177,103 +227,172 @@ namespace SyncPreview
             }
 
             const RowPlan* rowPlan = plan.find(row.relativePath);
-            static const RowPlan emptyPlan;
             const bool reFlaggedRow = reFlagged.contains(row.relativePath);
 
             const QString indent = GuiText::indentFor(row.relativePath);
             const QString badge = rowBadge(row, reFlaggedRow);
 
-            // MC-style: each pane spells the entry as its own side holds it
-            // (conflict rows may name it differently per side); a missing
-            // side reads as an empty pane.
+            // Each pane spells the entry as its own side holds it (conflict
+            // rows may name it differently per side); a missing side reads
+            // as an empty pane cell.
             QString localPathText = indent;
             if (!badge.isEmpty())
             {
                 localPathText += QStringLiteral("[%1]  ").arg(badge);
             }
             localPathText += row.local ? row.local->relativePath : QStringLiteral("—");
+            const QString remotePathText =
+                indent + (row.remote ? row.remote->relativePath : QStringLiteral("—"));
 
-            auto* rowItem = new QTreeWidgetItem();
-            rowItem->setText(kColLocalPath, localPathText);
-            rowItem->setText(kColLocalSize, GuiText::sizeText(row.local));
-            rowItem->setText(kColLocalModified, GuiText::timeText(row.local));
-            rowItem->setText(kColRemotePath,
-                             indent + (row.remote ? row.remote->relativePath : QStringLiteral("—")));
-            rowItem->setText(kColRemoteSize, GuiText::sizeText(row.remote));
-            rowItem->setText(kColRemoteModified, GuiText::timeText(row.remote));
-            rowItem->setToolTip(kColLocalPath, rowTooltip(row));
+            // One shared color per row across all panes: blockers must
+            // stand out, re-flags warn, identical/covered rows de-emphasize.
+            QColor color = normalColor;
+            if (row.kind == RowKind::Blocker)
+            {
+                color = errorColor;
+            }
+            else if (reFlaggedRow)
+            {
+                color = warningColor;
+            }
+            else if (row.kind == RowKind::Identical ||
+                     (rowPlan && !rowPlan->coveredByPath.isEmpty()))
+            {
+                color = secondaryColor;
+            }
 
-            applyRowForeground(rowItem, row, rowPlan ? *rowPlan : emptyPlan, reFlaggedRow);
+            const QString tooltip = rowTooltip(row);
 
-            auto* rowWidget = new SyncPreviewRowWidget(row,
-                                                       rowPlan ? *rowPlan : emptyPlan,
-                                                       decisions.value(row.relativePath).approved,
-                                                       reFlaggedRow,
-                                                       tree);
-            connect(rowWidget,
-                    &SyncPreviewRowWidget::actionSelected,
-                    this,
-                    &SyncPreviewPairDetailDialog::onRowActionSelected);
-            connect(rowWidget,
-                    &SyncPreviewRowWidget::approvalToggled,
-                    this,
-                    &SyncPreviewPairDetailDialog::onRowApprovalToggled);
+            addRowToTree(leftTree, localPathText, GuiText::sizeText(row.local),
+                         GuiText::timeText(row.local), tooltip, color);
+            addRowToTree(rightTree, remotePathText, GuiText::sizeText(row.remote),
+                         GuiText::timeText(row.remote), tooltip, color);
 
-            tree->addTopLevelItem(rowItem);
-            tree->setItemWidget(rowItem, kColAction, rowWidget);
+            // The action strip row: same index as both panes.
+            auto* midItem = new QTreeWidgetItem();
+            midItem->setSizeHint(0, QSize(kMidWidth, kRowHeight));
+            midItem->setForeground(0, QBrush(color));
+            midTree->addTopLevelItem(midItem);
+            midTree->setItemWidget(midItem, 0,
+                                   buildRowWidget(row, rowPlan ? *rowPlan : emptyPlan,
+                                                  decisions.value(row.relativePath).approved,
+                                                  reFlaggedRow, midTree));
 
             ++displayed;
         }
 
         if (remaining > 0)
         {
-            QTreeWidgetItem* loadMore = loadMoreItem(remaining);
-            tree->addTopLevelItem(loadMore);
-            auto* loadMoreButton = new QPushButton(tr("Load more (%1 remaining)").arg(remaining), tree);
+            QTreeWidgetItem* leftItem = loadMoreItem(remaining);
+            leftTree->addTopLevelItem(leftItem);
+            leftTree->setFirstItemColumnSpanned(leftItem, true);
+            auto* loadMoreButton = new QPushButton(tr("Load more (%1 remaining)").arg(remaining), leftTree);
             connect(loadMoreButton, &QPushButton::clicked, this, [this]()
             {
                 mShownCount += kRowCap;
                 rebuild();
             });
-            tree->setItemWidget(loadMore, kColLocalPath, loadMoreButton);
+            leftTree->setItemWidget(leftItem, kColPath, loadMoreButton);
+
+            addRowToTree(midTree, tr("Load more (%1 remaining)").arg(remaining),
+                         QString(), QString(), QString(), normalColor);
+            addRowToTree(rightTree, tr("Load more (%1 remaining)").arg(remaining),
+                         QString(), QString(), QString(), normalColor);
         }
+
+        // Restore the scroll position across all panes.
+        leftTree->verticalScrollBar()->setValue(scrollPosition);
     }
 
-    void SyncPreviewPairDetailDialog::applyRowForeground(QTreeWidgetItem* item,
-                                                         const Row& row,
-                                                         const RowPlan& rowPlan,
-                                                         bool reFlagged)
+    void SyncPreviewPairDetailDialog::syncScrollFrom(QScrollBar* source)
     {
-        auto theme = TokenParserWidgetManager::instance();
-        QColor color = theme->getColor(QLatin1String("text-primary"));
-        if (row.kind == RowKind::Blocker)
+        if (mSyncingPanes)
         {
-            // Blockers cannot be transferred; they must stand out.
-            color = theme->getColor(QLatin1String("text-error"));
-        }
-        else if (reFlagged)
-        {
-            // Classification changed and approval was cleared: warn.
-            color = theme->getColor(QLatin1String("text-warning"));
-        }
-        else if (row.kind == RowKind::Identical || !rowPlan.coveredByPath.isEmpty())
-        {
-            // De-emphasize rows that need no attention: identical content
-            // and rows whose effective action is inherited from a directory
-            // decision above them.
-            color = theme->getColor(QLatin1String("text-secondary"));
+            return;
         }
 
-        for (int column = 0; column < kColCount; ++column)
+        mSyncingPanes = true;
+        const int value = source->value();
+        for (QTreeWidget* tree : {mUi->leftTree, mUi->midTree, mUi->rightTree})
+        {
+            if (tree->verticalScrollBar() != source)
+            {
+                tree->verticalScrollBar()->setValue(value);
+            }
+        }
+        mSyncingPanes = false;
+    }
+
+    void SyncPreviewPairDetailDialog::syncSelectionFrom(QTreeWidget* source)
+    {
+        QTreeWidgetItem* current = source->currentItem();
+        if (!current)
+        {
+            return;
+        }
+
+        mSyncingPanes = true;
+        const int row = source->indexOfTopLevelItem(current);
+        for (QTreeWidget* tree : {mUi->leftTree, mUi->midTree, mUi->rightTree})
+        {
+            if (tree != source)
+            {
+                const QSignalBlocker blocker(tree);
+                tree->setCurrentItem(tree->topLevelItem(row));
+            }
+        }
+        mSyncingPanes = false;
+    }
+
+    QTreeWidgetItem* SyncPreviewPairDetailDialog::addRowToTree(QTreeWidget* tree,
+                                                               const QString& pathText,
+                                                               const QString& sizeText,
+                                                               const QString& timeText,
+                                                               const QString& tooltip,
+                                                               const QColor& color)
+    {
+        auto* item = new QTreeWidgetItem();
+        // Uniform row height: the panes lay out identical rows, which is
+        // what keeps the three views line-locked.
+        item->setSizeHint(kColPath, QSize(0, kRowHeight));
+        item->setText(kColPath, pathText);
+        item->setText(kColSize, sizeText);
+        item->setText(kColModified, timeText);
+        if (!tooltip.isEmpty())
+        {
+            item->setToolTip(kColPath, tooltip);
+        }
+        for (int column = 0; column < tree->columnCount(); ++column)
         {
             item->setForeground(column, QBrush(color));
         }
+        tree->addTopLevelItem(item);
+        return item;
+    }
+
+    QWidget* SyncPreviewPairDetailDialog::buildRowWidget(const Row& row,
+                                                         const RowPlan& rowPlan,
+                                                         bool approved,
+                                                         bool reFlagged,
+                                                         QWidget* parent)
+    {
+        auto* rowWidget = new SyncPreviewRowWidget(row, rowPlan, approved, reFlagged, parent);
+        connect(rowWidget,
+                &SyncPreviewRowWidget::actionSelected,
+                this,
+                &SyncPreviewPairDetailDialog::onRowActionSelected);
+        connect(rowWidget,
+                &SyncPreviewRowWidget::approvalToggled,
+                this,
+                &SyncPreviewPairDetailDialog::onRowApprovalToggled);
+        return rowWidget;
     }
 
     QTreeWidgetItem* SyncPreviewPairDetailDialog::loadMoreItem(int remaining)
     {
         auto* item = new QTreeWidgetItem();
-        item->setText(kColLocalPath, tr("Load more (%1 remaining)").arg(remaining));
+        item->setSizeHint(kColPath, QSize(0, kRowHeight));
+        item->setText(kColPath, tr("Load more (%1 remaining)").arg(remaining));
         return item;
     }
 

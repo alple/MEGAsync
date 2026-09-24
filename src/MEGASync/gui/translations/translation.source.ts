@@ -9045,14 +9045,6 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Local size</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Local modified</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Action &amp; approval</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9061,16 +9053,16 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Remote size</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Remote modified</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Close</source>
         <translation type="unfinished">Close</translation>
+    </message>
+    <message>
+        <source>Size</source>
+        <translation type="unfinished">Size</translation>
+    </message>
+    <message>
+        <source>Modified</source>
+        <translation type="unfinished"></translation>
     </message>
 </context>
 <context>
