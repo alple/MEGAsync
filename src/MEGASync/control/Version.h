@@ -9,6 +9,12 @@
 #define VER_RC 0
 // Format: "VER_MAJOR.VER_MINOR.VER_MICRO.VER_RC\0"
 #define VER_PRODUCTVERSION_STR "6.6.2.0\0"
+
+// Fork-only display suffix, appended to Preferences::VERSION_STRING
+// ("6.6.2-dev.N"). VER_PRODUCTVERSION_STR, VER_FILEVERSION_CODE and the
+// update-check numeric stay untouched — this is display-only.
+// Bump N whenever this fork ships a binary built from new fork changes.
+#define VER_FORK_SUFFIX "-dev.1"
 #define VER_PRODUCTVERSION VER_MAJOR, VER_MINOR, VER_MICRO, VER_RC
 #define VER_FILEVERSION VER_MAJOR, VER_MINOR, VER_MICRO, VER_RC
 #define VER_FILEVERSION_CODE (VER_MAJOR * 10000 + VER_MINOR * 100 + VER_MICRO)

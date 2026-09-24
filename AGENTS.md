@@ -10,6 +10,8 @@ This branch is a **personal extension of the upstream MEGAsync production app**,
 2. **Read-only by default.** Changes should observe or report, not alter behavior. The fork's additions must not influence how sync, transfer, update, or other prod mechanisms work. If a proposed change would influence or change the behavior of prod files or mechanisms: **stop and flag it**. Ask for explicit permission first, describing in plain language what behavior changes, when it takes effect (always? under a condition? only in a build config?), and the concrete risks — e.g. data loss in synced folders, broken auto-update, conflicts on the next upstream merge.
 3. **No personal data, no machine paths.** Never commit the owner's real name, account details, or absolute paths from their machine (`/home/alek/...` etc.) into source, configs, docs, or tickets. Use placeholders or environment-relative paths.
 
+**Fork versioning.** The fork appends a display-only suffix to the version (`VER_FORK_SUFFIX` in `src/MEGASync/control/Version.h`, shown as `6.6.2-dev.N`). Rules: **bump N** whenever a binary is built from this fork that contains new fork-side changes (a "production binary" from this tree must never reuse a dev number already shipped). When merging new upstream source, **incorporate existing fork changes** — re-apply the suffix mechanism and other fork additions on top of the updated upstream code if they were touched.
+
 ## Precedence (repo docs override skills)
 
 Skills (`.agents/skills/`) may be overwritten or reinstalled — conveniences, **not** the source of truth. On conflict, repo files win:

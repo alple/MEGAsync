@@ -55,9 +55,9 @@ const QString Preferences::USER_AGENT = QString::fromUtf8("%1/%2").arg(QString::
 const int Preferences::VERSION_CODE = VER_FILEVERSION_CODE;
 const int Preferences::VERSION_RC = VER_RC;
 const int Preferences::BUILD_ID = VER_BUILD_ID;
-// Format: "VER_MAJOR.VER_MINOR.VER_MICRO"
+// Format: "VER_MAJOR.VER_MINOR.VER_MICRO" (+ fork-only VER_FORK_SUFFIX, display-only)
 const QString Preferences::VERSION_STRING =
-    QString::fromLatin1("%1.%2.%3").arg(VER_MAJOR).arg(VER_MINOR).arg(VER_MICRO);
+    QString::fromLatin1("%1.%2.%3%4").arg(VER_MAJOR).arg(VER_MINOR).arg(VER_MICRO).arg(QString::fromUtf8(VER_FORK_SUFFIX));
 QString Preferences::SDK_ID = QString::fromUtf8(VER_SDK_ID);
 const QString Preferences::CHANGELOG = QString::fromUtf8(VER_CHANGES_NOTES);
 
