@@ -2,6 +2,7 @@
 #include "SyncPreviewQueueStore.h"
 #include "SyncPreviewReconciler.h"
 
+#include <QSet>
 #include <QUuid>
 
 namespace SyncPreview
@@ -111,6 +112,96 @@ namespace SyncPreview
 
         static const Planner planner;
         return planner.plan(classificationIt.value(), decisions);
+    }
+
+    PairSummary PairController::summary(const QString& pairId) const
+    {
+        PairSummary summary;
+        const Classification& classification = this->classification(pairId);
+
+        // Whole subtree per side. Conflict rows hold exactly one side's
+        // entry, blocker rows hold both, paired rows both equal copies:
+        // every side's entry is counted exactly once for its side.
+        for (const Row& row : classification.rows)
+        {
+            if (row.local)
+            {
+                if (row.local->isFolder())
+                {
+                    ++summary.localDirs;
+                }
+                else
+                {
+                    ++summary.localFiles;
+                    summary.localBytes += row.local->size;
+                }
+            }
+            if (row.remote)
+            {
+                if (row.remote->isFolder())
+                {
+                    ++summary.remoteDirs;
+                }
+                else
+                {
+                    ++summary.remoteFiles;
+                    summary.remoteBytes += row.remote->size;
+                }
+            }
+        }
+
+        // Pending delta from the plan. Consequence paths repeat across rows
+        // (a directory row aggregates the consequences of its self-planning
+        // descendants), so dedupe per consequence type before counting.
+        const Plan pairPlan = plan(pairId);
+        QSet<QString> createdLocal;
+        QSet<QString> changedLocal;
+        QSet<QString> removedLocal;
+        QSet<QString> createdRemote;
+        QSet<QString> changedRemote;
+        QSet<QString> removedRemote;
+        for (const RowPlan& rowPlan : pairPlan.rows)
+        {
+            for (const QString& path : rowPlan.createdLocal) { createdLocal.insert(path); }
+            for (const QString& path : rowPlan.changedLocal) { changedLocal.insert(path); }
+            for (const QString& path : rowPlan.removedLocal) { removedLocal.insert(path); }
+            for (const QString& path : rowPlan.createdRemote) { createdRemote.insert(path); }
+            for (const QString& path : rowPlan.changedRemote) { changedRemote.insert(path); }
+            for (const QString& path : rowPlan.removedRemote) { removedRemote.insert(path); }
+        }
+
+        auto accumulate = [&classification](const QSet<QString>& paths,
+                                            bool sourceIsLocal,
+                                            qint64& bytes,
+                                            int& files)
+        {
+            for (const QString& path : paths)
+            {
+                const Row* row = classification.find(path);
+                if (!row)
+                {
+                    continue;
+                }
+                const std::optional<Entry>& source = sourceIsLocal ? row->local : row->remote;
+                if (!source || source->isFolder())
+                {
+                    continue;
+                }
+                bytes += source->size;
+                ++files;
+            }
+        };
+
+        // Uploads carry local bytes to the remote side; downloads the
+        // reverse. Folder nodes and removals carry no transfer bytes.
+        accumulate(createdRemote, true, summary.pendingRemoteBytes, summary.pendingRemoteFiles);
+        accumulate(changedRemote, true, summary.pendingRemoteBytes, summary.pendingRemoteFiles);
+        accumulate(createdLocal, false, summary.pendingLocalBytes, summary.pendingLocalFiles);
+        accumulate(changedLocal, false, summary.pendingLocalBytes, summary.pendingLocalFiles);
+        summary.pendingLocalRemoved = removedLocal.size();
+        summary.pendingRemoteRemoved = removedRemote.size();
+
+        return summary;
     }
 
     void PairController::setAction(const QString& pairId, const QString& relativePath, Action action)

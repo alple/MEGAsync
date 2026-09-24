@@ -1,5 +1,7 @@
 #include "SyncPreviewRowWidget.h"
 
+#include "TokenParserWidgetManager.h"
+
 #include <QCheckBox>
 #include <QComboBox>
 #include <QHBoxLayout>
@@ -21,7 +23,22 @@ namespace SyncPreview
         layout->setContentsMargins(4, 0, 4, 0);
         layout->setSpacing(6);
 
+        // Prod's global sheet paints disabled combos with the low-contrast
+        // text-disabled token; blocker rows (the only disabled ones) read
+        // poorly with it. Scoped override to the more readable text-secondary
+        // token — same de-emphasis, more contrast. Resolved at construction:
+        // the dialogs re-populate on theme change (ThemeManager::themeChanged
+        // hook), which recreates the row widgets with fresh token colors.
+        const QColor disabledText =
+            TokenParserWidgetManager::instance()->getColor(QLatin1String("text-secondary"));
+        setStyleSheet(QStringLiteral("QComboBox:disabled { color: %1; }").arg(disabledText.name()));
+
         mActionCombo = new QComboBox(this);
+        // Prod widget design: the app's themed combo/checkbox components are
+        // keyed on the type="mega" property; without it the widgets fall
+        // back to native Qt styling (part of the MEGA-2.7 readability
+        // feedback).
+        mActionCombo->setProperty("type", QLatin1String("mega"));
         const QVector<Action> choices{Action::LocalToRemote, Action::RemoteToLocal, Action::BestEffort, Action::None};
         int effectiveIndex = -1;
         for (int i = 0; i < choices.size(); ++i)
@@ -65,6 +82,7 @@ namespace SyncPreview
         if (mRow.requiresApproval)
         {
             mApproveBox = new QCheckBox(tr("Approved"), this);
+            mApproveBox->setProperty("type", QLatin1String("mega"));
             connect(mApproveBox, &QCheckBox::toggled, this, [this](bool checked)
             {
                 emit approvalToggled(mRow.relativePath, checked);
@@ -78,6 +96,12 @@ namespace SyncPreview
             if (reFlagged)
             {
                 auto* reFlagLabel = new QLabel(tr("(classification changed — re-approve)"), this);
+                // Theme token, resolved at construction (dialogs re-populate
+                // on theme change, see the disabled-combo note above).
+                reFlagLabel->setStyleSheet(QStringLiteral("QLabel { color: %1; }")
+                                               .arg(TokenParserWidgetManager::instance()
+                                                        ->getColor(QLatin1String("text-warning"))
+                                                        .name()));
                 layout->addWidget(reFlagLabel);
             }
         }

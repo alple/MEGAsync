@@ -38,6 +38,34 @@ namespace SyncPreview
 
     using SideProviderFactory = std::function<std::optional<PairSideProviders>(const Pair&)>;
 
+    // Per-pair roll-up for the pair-first list view (MEGA-2.7): whole-subtree
+    // stats per side from the classification, plus the pending-transfer delta
+    // per side from the current plan (what the commit would actually
+    // transfer or remove under the current decisions, recommended actions
+    // included). Pure additive API; no state is touched by computing it.
+    struct PairSummary
+    {
+        // Whole subtree per side.
+        qint64 localBytes = 0;
+        int localFiles = 0;
+        int localDirs = 0;
+        qint64 remoteBytes = 0;
+        int remoteFiles = 0;
+        int remoteDirs = 0;
+
+        // Pending delta per side. pending*Bytes sums the source-side sizes
+        // of the created+changed file entries that would transfer (upload
+        // carries local bytes, download remote bytes); folder nodes carry
+        // none. pending*Removed counts the paths that would be trashed
+        // (local) or moved to MEGA Rubbish (remote).
+        qint64 pendingLocalBytes = 0;
+        int pendingLocalFiles = 0;
+        int pendingLocalRemoved = 0;
+        qint64 pendingRemoteBytes = 0;
+        int pendingRemoteFiles = 0;
+        int pendingRemoteRemoved = 0;
+    };
+
     // Headless orchestrator behind the review dialog: the pair queue,
     // per-pair classification, per-row decisions and approvals, plans, the
     // approval gate, and queue persistence. Owns no widgets, so the decision
@@ -78,6 +106,10 @@ namespace SyncPreview
         // plan() with one hypothetical decision applied (used for the
         // directory-action consequences preview).
         Plan previewPlan(const QString& pairId, const QString& relativePath, Action action) const;
+
+        // Whole-subtree stats plus the pending-transfer delta for the pair
+        // (see PairSummary). Zeros for a pair without a classification.
+        PairSummary summary(const QString& pairId) const;
 
         void setAction(const QString& pairId, const QString& relativePath, Action action);
         void setApproved(const QString& pairId, const QString& relativePath, bool approved);

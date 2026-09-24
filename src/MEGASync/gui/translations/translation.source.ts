@@ -8874,22 +8874,6 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Load more (%1 remaining)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Identical twin: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Under a blocked path: resolve the blocker above first</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Not resolvable by a transfer: needs rename/exclusion (later stage)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>No pairs queued yet — add a demo pair.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8899,6 +8883,42 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
     <message>
         <source>%1 pair(s) queued — %2 item(s) awaiting approval.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Review…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Opens the dual-pane detail window for this pair</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>local: %1 file(s), %2 dir(s), %3 — remote: %4 file(s), %5 dir(s), %6</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 file(s) to local (%2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 to local trash</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 file(s) to remote (%2)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 to MEGA Rubbish</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>no pending transfers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>pending: %1</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -8918,6 +8938,33 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
     <message>
         <source>Add pair</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SyncPreview::SyncPreviewPairDetailDialog</name>
+    <message>
+        <source>Load more (%1 remaining)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Identical twin: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Under a blocked path: resolve the blocker above first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Not resolvable by a transfer: needs rename/exclusion (later stage)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 item(s) awaiting approval</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>all flagged items approved</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -8967,11 +9014,26 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Filter rows by path</source>
+        <source>Close</source>
+        <translation type="unfinished">Close</translation>
+    </message>
+    <message>
+        <source>Filter pairs by name</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>SyncPreviewPairDetailDialog</name>
+    <message>
+        <source>Pair review</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Group by pair</source>
+        <source>Filter:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Filter rows by path</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8979,7 +9041,7 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Path</source>
+        <source>Local path</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -8991,19 +9053,19 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <source>Action &amp; approval</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Remote path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Remote size</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Remote modified</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Newer side</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Action &amp; approval</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

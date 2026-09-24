@@ -239,3 +239,102 @@ TEST_CASE("PairController removes pairs and drops completed pairs on restore")
     reloaded.restore();
     CHECK(reloaded.pairs().isEmpty());
 }
+
+TEST_CASE("PairController summarizes subtree stats and the pending delta")
+{
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+
+    PairController controller{QueueFileStore(dir.filePath(QStringLiteral("queue.json")))};
+    controller.setSideProviderFactory(factoryFor(QStringLiteral("demo-a"), scenarioA()));
+    controller.addPair(candidateA());
+    const QString pairId = controller.pairs().first().id;
+
+    // Whole subtree: local docs/, docs/a.txt (10), old/, old/b.txt (30);
+    // remote docs/, docs/a.txt (10), twin/, twin/x.txt (30).
+    const PairSummary subtree = controller.summary(pairId);
+    CHECK(subtree.localBytes == 40);
+    CHECK(subtree.localFiles == 2);
+    CHECK(subtree.localDirs == 2);
+    CHECK(subtree.remoteBytes == 40);
+    CHECK(subtree.remoteFiles == 2);
+    CHECK(subtree.remoteDirs == 2);
+
+    // No decisions yet, but the recommended plan already cascades the
+    // single-sided directories: old/ uploads old/b.txt, twin/ downloads
+    // twin/x.txt. The conflicts themselves stay undecided.
+    CHECK(subtree.pendingLocalBytes == 30);   // download of twin/x.txt (30)
+    CHECK(subtree.pendingLocalFiles == 1);
+    CHECK(subtree.pendingLocalRemoved == 0);
+    CHECK(subtree.pendingRemoteBytes == 30);  // upload of old/b.txt (30)
+    CHECK(subtree.pendingRemoteFiles == 1);
+    CHECK(subtree.pendingRemoteRemoved == 0);
+
+    // Deciding both conflict rows keeps the same one-upload/one-download
+    // shape; folder nodes carry no bytes.
+    controller.setAction(pairId, QStringLiteral("old/b.txt"), Action::LocalToRemote);
+    controller.setAction(pairId, QStringLiteral("twin/x.txt"), Action::RemoteToLocal);
+
+    const PairSummary delta = controller.summary(pairId);
+    CHECK(delta.localBytes == 40);
+    CHECK(delta.remoteBytes == 40);
+    CHECK(delta.pendingRemoteBytes == 30);  // upload of old/b.txt (30)
+    CHECK(delta.pendingRemoteFiles == 1);
+    CHECK(delta.pendingLocalBytes == 30);   // download of twin/x.txt (30)
+    CHECK(delta.pendingLocalFiles == 1);
+    CHECK(delta.pendingLocalRemoved == 0);
+    CHECK(delta.pendingRemoteRemoved == 0);
+
+    // A "do nothing" decision on one conflict row removes it from the delta.
+    controller.setAction(pairId, QStringLiteral("old/b.txt"), Action::None);
+    const PairSummary afterNone = controller.summary(pairId);
+    CHECK(afterNone.pendingRemoteBytes == 0);
+    CHECK(afterNone.pendingRemoteFiles == 0);
+    CHECK(afterNone.pendingLocalBytes == 30);
+    CHECK(afterNone.pendingLocalFiles == 1);
+
+    // Unknown pair id: zeros.
+    const PairSummary none = controller.summary(QStringLiteral("no-such-pair"));
+    CHECK(none.localBytes == 0);
+    CHECK(none.localFiles == 0);
+    CHECK(none.pendingRemoteRemoved == 0);
+}
+
+TEST_CASE("PairController summary dedupes cascaded directory consequences")
+{
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+
+    // A local-only folder with two files; remote is empty.
+    FakeScenario scenario;
+    scenario.local = FakeTreeBuilder()
+                         .addFolder(QStringLiteral("sub"))
+                         .addFile(QStringLiteral("sub/f1.bin"), 100, 100, "f1")
+                         .addFile(QStringLiteral("sub/f2.bin"), 50, 100, "f2")
+                         .build();
+
+    PairCandidate candidate;
+    candidate.localPath = QStringLiteral("demo-c");
+    candidate.remotePath = QStringLiteral("demo-c (remote)");
+
+    PairController controller{QueueFileStore(dir.filePath(QStringLiteral("queue.json")))};
+    controller.setSideProviderFactory(factoryFor(QStringLiteral("demo-c"), scenario));
+    controller.addPair(candidate);
+    const QString pairId = controller.pairs().first().id;
+
+    // Recommended cascade (subtree upload on sub/): the directory row
+    // aggregates both file rows plus its own folder node.
+    PairSummary cascaded = controller.summary(pairId);
+    CHECK(cascaded.pendingRemoteFiles == 2);
+    CHECK(cascaded.pendingRemoteBytes == 150);
+    CHECK(cascaded.pendingLocalFiles == 0);
+
+    // An explicit decision on one descendant turns the directory op into a
+    // node-only upload, so the directory row aggregates that descendant's
+    // consequences AND the descendant row carries them itself: the dedupe
+    // must count the file once.
+    controller.setAction(pairId, QStringLiteral("sub/f1.bin"), Action::LocalToRemote);
+    cascaded = controller.summary(pairId);
+    CHECK(cascaded.pendingRemoteFiles == 2);
+    CHECK(cascaded.pendingRemoteBytes == 150);
+}

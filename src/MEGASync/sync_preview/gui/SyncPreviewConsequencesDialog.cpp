@@ -1,5 +1,7 @@
 #include "SyncPreviewConsequencesDialog.h"
 
+#include "TokenParserWidgetManager.h"
+
 #include <QDialogButtonBox>
 #include <QLabel>
 #include <QPushButton>
@@ -38,6 +40,11 @@ namespace SyncPreview
         setWindowTitle(tr("Consequences of the directory action"));
         setMinimumWidth(520);
         setAttribute(Qt::WA_DeleteOnClose);
+
+        // Prod theming: the popup is exec()'d (never tracked by
+        // DialogOpener), so it must register itself to receive the app's
+        // standard-components styling and live theme changes.
+        TokenParserWidgetManager::instance()->registerWidgetForTheming(this);
 
         auto* layout = new QVBoxLayout(this);
 

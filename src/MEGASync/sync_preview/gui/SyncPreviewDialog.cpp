@@ -2,94 +2,30 @@
 #include "ui_SyncPreviewDialog.h"
 #include "SyncPreviewFakePairPicker.h"
 #include "SyncPreviewPairController.h"
+#include "SyncPreviewPairDetailDialog.h"
+#include "SyncPreviewGuiFormat.h"
 #include "SyncPreviewQueueFileStore.h"
-#include "SyncPreviewRowWidget.h"
-#include "SyncPreviewConsequencesDialog.h"
 
+#include "DialogOpener.h"
 #include "Preferences.h"
+#include "ThemeManager.h"
+#include "TokenParserWidgetManager.h"
 
-#include <QCheckBox>
-#include <QDateTime>
+#include <QColor>
 #include <QDir>
+#include <QFont>
 #include <QHBoxLayout>
-#include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QListWidgetItem>
 #include <QMessageBox>
+#include <QPalette>
 #include <QPushButton>
-#include <QScrollBar>
-#include <QTreeWidgetItem>
-
-namespace Ui
-{
-    class SyncPreviewDialog;
-}
+#include <QVBoxLayout>
 
 namespace SyncPreview
 {
-    namespace
-    {
-        constexpr int kRowCap = 200;
-
-        QString pairLabel(const Pair& pair)
-        {
-            return pair.localPath + QStringLiteral("  <->  ") + pair.remotePath;
-        }
-
-        QString indentFor(const QString& relativePath)
-        {
-            const int depth = relativePath.count(QLatin1Char('/'));
-            return QString(2 * depth, QLatin1Char(' '));
-        }
-
-        QString sizeText(const std::optional<Entry>& entry)
-        {
-            if (!entry || entry->isFolder())
-            {
-                return QStringLiteral("-");
-            }
-            const qint64 bytes = entry->size;
-            if (bytes < 1024)
-            {
-                return QStringLiteral("%1 B").arg(bytes);
-            }
-            const double kb = static_cast<double>(bytes) / 1024.0;
-            if (kb < 1024.0)
-            {
-                return QStringLiteral("%1 KB").arg(kb, 0, 'f', 1);
-            }
-            return QStringLiteral("%1 MB").arg(kb / 1024.0, 0, 'f', 1);
-        }
-
-        QString timeText(const std::optional<Entry>& entry)
-        {
-            if (!entry || entry->modifiedTime <= 0)
-            {
-                return QStringLiteral("-");
-            }
-            const QDateTime dateTime = QDateTime::fromSecsSinceEpoch(entry->modifiedTime);
-            return dateTime.date().toString(QStringLiteral("yyyy-MM-dd")) + QLatin1Char(' ') +
-                dateTime.time().toString(QStringLiteral("HH:mm"));
-        }
-
-        QString newerMarker(const Row& row)
-        {
-            if (!row.local || !row.remote || row.local->isFolder() || row.remote->isFolder())
-            {
-                return QStringLiteral("-");
-            }
-            if (row.local->modifiedTime > row.remote->modifiedTime)
-            {
-                return QStringLiteral("local");
-            }
-            if (row.local->modifiedTime < row.remote->modifiedTime)
-            {
-                return QStringLiteral("remote");
-            }
-            return QStringLiteral("same");
-        }
-    }
-
     SyncPreviewDialog::SyncPreviewDialog(QWidget* parent, const QString& queueFilePath) :
         QDialog(parent),
         mUi(new Ui::SyncPreviewDialog)
@@ -124,44 +60,53 @@ namespace SyncPreview
 
         connect(mUi->addPairButton, &QPushButton::clicked, this, &SyncPreviewDialog::addPair);
         connect(mUi->closeButton, &QPushButton::clicked, this, &QDialog::close);
-        connect(mUi->filterEdit, &QLineEdit::textChanged, this, [this]()
+        connect(mUi->filterEdit, &QLineEdit::textChanged, this, [this]() { rebuild(); });
+        connect(mUi->pairsList, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* item)
         {
-            mShownCounts.clear();
-            rebuild();
+            openPair(item->data(Qt::UserRole).toString());
         });
-        connect(mUi->groupByPairToggle, &QCheckBox::toggled, this, [this](bool) { rebuild(); });
-        connect(mUi->showInSyncToggle, &QCheckBox::toggled, this, [this](bool) { rebuild(); });
 
         connect(mController, &PairController::pairAdded, this, [this](const QString&) { rebuild(); });
         connect(mController, &PairController::pairRemoved, this, [this](const QString&) { rebuild(); });
         connect(mController, &PairController::pairChanged, this, [this](const QString&) { rebuild(); });
         connect(mController, &PairController::restored, this, [this]() { rebuild(); });
 
-        setupColumns();
+        // Per-row widget and palette colors are token colors resolved at
+        // populate time: re-resolve when the theme changes so both color
+        // schemas read well.
+        connect(ThemeManager::instance(), &ThemeManager::themeChanged, this, [this]()
+        {
+            applyListPalette();
+            rebuild();
+        });
+
+        // Prod theming: standard-components stylesheet + per-theme token
+        // replacement, re-applied on live theme changes. (DialogOpener also
+        // themes on show; registering keeps this dialog covered when it is
+        // shown outside DialogOpener, e.g. from tests/scaffolding.)
+        TokenParserWidgetManager::instance()->registerWidgetForTheming(this);
+
+        applyListPalette();
         mController->restore();
         rebuild();
     }
 
     SyncPreviewDialog::~SyncPreviewDialog() = default;
 
-    void SyncPreviewDialog::setupColumns()
+    void SyncPreviewDialog::applyListPalette()
     {
-        QTreeWidget* tree = mUi->rowsTree;
-        tree->setSortingEnabled(false);
-        QHeaderView* header = tree->header();
-        header->setSectionResizeMode(0, QHeaderView::Stretch);
-        header->setSectionResizeMode(1, QHeaderView::Fixed);
-        header->setSectionResizeMode(2, QHeaderView::Fixed);
-        header->setSectionResizeMode(3, QHeaderView::Fixed);
-        header->setSectionResizeMode(4, QHeaderView::Fixed);
-        header->setSectionResizeMode(5, QHeaderView::Fixed);
-        header->setSectionResizeMode(6, QHeaderView::Interactive);
-        tree->setColumnWidth(1, 90);
-        tree->setColumnWidth(2, 130);
-        tree->setColumnWidth(3, 90);
-        tree->setColumnWidth(4, 130);
-        tree->setColumnWidth(5, 100);
-        tree->setColumnWidth(6, 420);
+        // Theme tokens instead of ad-hoc greys: rows and alternating bands
+        // use the app's surface colors, selection uses the app's inverse
+        // accent, so both color schemas keep sufficient contrast.
+        QPalette palette = mUi->pairsList->palette();
+        auto theme = TokenParserWidgetManager::instance();
+        palette.setColor(QPalette::Base, theme->getColor(QLatin1String("page-background")));
+        palette.setColor(QPalette::AlternateBase, theme->getColor(QLatin1String("surface-1")));
+        palette.setColor(QPalette::Text, theme->getColor(QLatin1String("text-primary")));
+        palette.setColor(QPalette::WindowText, theme->getColor(QLatin1String("text-primary")));
+        palette.setColor(QPalette::Highlight, theme->getColor(QLatin1String("surface-inverse-accent")));
+        palette.setColor(QPalette::HighlightedText, theme->getColor(QLatin1String("text-inverse-accent")));
+        mUi->pairsList->setPalette(palette);
     }
 
     void SyncPreviewDialog::addPair()
@@ -183,270 +128,181 @@ namespace SyncPreview
 
     void SyncPreviewDialog::rebuild()
     {
-        const int scrollPosition = mUi->rowsTree->verticalScrollBar()->value();
         repopulate();
         updateSummary();
-        mUi->rowsTree->verticalScrollBar()->setValue(scrollPosition);
     }
 
     void SyncPreviewDialog::repopulate()
     {
-        const bool grouped = mUi->groupByPairToggle->isChecked();
+        const QString filter = mUi->filterEdit->text();
 
-        QTreeWidget* tree = mUi->rowsTree;
-        tree->clear();
-        mShownCounts.reserve(mController->pairs().size());
+        QListWidget* list = mUi->pairsList;
+        list->clear();
 
         for (const Pair& pair : mController->pairs())
         {
-            if (!mShownCounts.contains(pair.id))
-            {
-                mShownCounts.insert(pair.id, kRowCap);
-            }
-            const int shownCount = mShownCounts.value(pair.id, kRowCap);
-
-            if (grouped)
-            {
-                auto* pairNode = new QTreeWidgetItem(tree);
-                pairNode->setFirstColumnSpanned(true);
-
-                auto* pairHeader = new QWidget(tree);
-                auto* headerLayout = new QHBoxLayout(pairHeader);
-                headerLayout->setContentsMargins(4, 2, 4, 2);
-
-                auto* label = new QLabel(pairLabel(pair), pairHeader);
-                QFont boldFont = label->font();
-                boldFont.setBold(true);
-                label->setFont(boldFont);
-                headerLayout->addWidget(label);
-
-                const int awaiting = mController->awaitingApprovalCount(pair.id);
-                auto* countsLabel = new QLabel(awaiting > 0
-                    ? tr("%1 item(s) awaiting approval").arg(awaiting)
-                    : tr("all flagged items approved"), pairHeader);
-                headerLayout->addWidget(countsLabel);
-                headerLayout->addStretch(1);
-
-                auto* commitButton = new QPushButton(tr("Commit pair"), pairHeader);
-                commitButton->setToolTip(tr("Opens the pre-filled create-sync dialog (Stage 5)"));
-                commitButton->setEnabled(mController->allApproved(pair.id));
-                connect(commitButton, &QPushButton::clicked, this, [this]()
-                {
-                    QMessageBox::information(this,
-                                             tr("Sync pre-commit review"),
-                                             tr("The commit flow arrives in Stage 5; the reviewed decisions are already persisted."));
-                });
-                headerLayout->addWidget(commitButton);
-
-                auto* removeButton = new QPushButton(tr("Remove"), pairHeader);
-                connect(removeButton, &QPushButton::clicked, this, [this, pairId = pair.id]()
-                {
-                    if (QMessageBox::question(this,
-                                              tr("Remove pair"),
-                                              tr("Remove this pair from the review queue?")) == QMessageBox::Yes)
-                    {
-                        mController->removePair(pairId);
-                    }
-                });
-                headerLayout->addWidget(removeButton);
-
-                tree->setItemWidget(pairNode, 0, pairHeader);
-                populatePairRows(pair, pairNode, shownCount);
-            }
-            else
-            {
-                populatePairRows(pair, nullptr, shownCount);
-            }
-        }
-    }
-
-    void SyncPreviewDialog::populatePairRows(const Pair& pair, QTreeWidgetItem* pairNode, int shownCount)
-    {
-        const Classification& classification = mController->classification(pair.id);
-        const QHash<QString, RowDecision> decisions = decisionsFor(pair.id);
-        const QStringList reFlagged = mController->reFlaggedPaths(pair.id);
-        const Plan plan = mController->plan(pair.id);
-
-        const QString filter = mUi->filterEdit->text();
-        const bool showInSync = mUi->showInSyncToggle->isChecked();
-
-        QTreeWidget* tree = mUi->rowsTree;
-        int displayed = 0;
-        int remaining = 0;
-
-        for (const Row& row : classification.rows)
-        {
-            if (!rowVisible(row, filter) || (!showInSync && row.kind == RowKind::Identical))
+            if (!pairVisible(pair, filter))
             {
                 continue;
             }
 
-            if (displayed >= shownCount)
-            {
-                ++remaining;
-                continue;
-            }
+            auto* item = new QListWidgetItem(list);
+            item->setData(Qt::UserRole, pair.id);
 
-const RowPlan* rowPlan = plan.find(row.relativePath);
-            static const RowPlan emptyPlan;
-            const bool reFlaggedRow = reFlagged.contains(row.relativePath);
+            auto* rowWidget = new QWidget(list);
+            auto* rowLayout = new QVBoxLayout(rowWidget);
+            rowLayout->setContentsMargins(6, 4, 6, 4);
+            rowLayout->setSpacing(2);
 
-            const QString indent = indentFor(row.relativePath);
-            const QString badge = rowBadge(row, reFlaggedRow);
-            // Grouped mode: path only. Flat mode: the pair label prefixes
-            // the path so rows from several pairs stay identifiable.
-            const QString displayPath = pairNode
-                ? row.relativePath
-                : QStringLiteral("%1 — %2").arg(pair.localPath, row.relativePath);
+            auto* headerLayout = new QHBoxLayout();
+            headerLayout->setSpacing(6);
 
-            auto* rowItem = new QTreeWidgetItem();
-            QString pathText = indent;
-            if (!badge.isEmpty())
-            {
-                pathText += QStringLiteral("[%1]  ").arg(badge);
-            }
-            pathText += displayPath;
-            rowItem->setText(0, pathText);
-            rowItem->setText(1, sizeText(row.local));
-            rowItem->setText(2, timeText(row.local));
-            rowItem->setText(3, sizeText(row.remote));
-            rowItem->setText(4, timeText(row.remote));
-            rowItem->setText(5, newerMarker(row));
-            rowItem->setToolTip(0, rowTooltip(row));
+            auto* label = new QLabel(pair.localPath + QStringLiteral("  <->  ") + pair.remotePath, rowWidget);
+            QFont boldFont = label->font();
+            boldFont.setBold(true);
+            label->setFont(boldFont);
+            headerLayout->addWidget(label);
+            headerLayout->addStretch(1);
 
-            auto* rowWidget = new SyncPreviewRowWidget(row,
-                                                       rowPlan ? *rowPlan : emptyPlan,
-                                                       decisions.value(row.relativePath).approved,
-                                                       reFlaggedRow,
-                                                       tree);
+            auto* reviewButton = new QPushButton(tr("Review…"), rowWidget);
+            reviewButton->setToolTip(tr("Opens the dual-pane detail window for this pair"));
             const QString pairId = pair.id;
-            connect(rowWidget,
-                    &SyncPreviewRowWidget::actionSelected,
-                    this,
-                    [this, pairId](const QString& relativePath, Action action)
-                    {
-                        onRowActionSelected(pairId, relativePath, action);
-                    });
-            connect(rowWidget,
-                    &SyncPreviewRowWidget::approvalToggled,
-                    this,
-                    [this, pairId](const QString& relativePath, bool approved)
-                    {
-                        onRowApprovalToggled(pairId, relativePath, approved);
-                    });
+            connect(reviewButton, &QPushButton::clicked, this, [this, pairId]() { openPair(pairId); });
+            headerLayout->addWidget(reviewButton);
 
-            if (pairNode)
+            auto* commitButton = new QPushButton(tr("Commit pair"), rowWidget);
+            commitButton->setToolTip(tr("Opens the pre-filled create-sync dialog (Stage 5)"));
+            commitButton->setEnabled(mController->allApproved(pair.id));
+            connect(commitButton, &QPushButton::clicked, this, [this]()
             {
-                pairNode->addChild(rowItem);
-            }
-            else
-            {
-                tree->addTopLevelItem(rowItem);
-            }
-            tree->setItemWidget(rowItem, 6, rowWidget);
-
-            ++displayed;
-        }
-
-        if (remaining > 0)
-        {
-            QTreeWidgetItem* loadMore = loadMoreItem(remaining);
-            if (pairNode)
-            {
-                pairNode->addChild(loadMore);
-            }
-            else
-            {
-                tree->addTopLevelItem(loadMore);
-            }
-            auto* loadMoreButton = new QPushButton(tr("Load more (%1 remaining)").arg(remaining), tree);
-            const QString loadPairId = pair.id;
-            connect(loadMoreButton, &QPushButton::clicked, this, [this, loadPairId]()
-            {
-                mShownCounts[loadPairId] += kRowCap;
-                rebuild();
+                QMessageBox::information(this,
+                                         tr("Sync pre-commit review"),
+                                         tr("The commit flow arrives in Stage 5; the reviewed decisions are already persisted."));
             });
-            tree->setItemWidget(loadMore, 0, loadMoreButton);
+            headerLayout->addWidget(commitButton);
+
+            auto* removeButton = new QPushButton(tr("Remove"), rowWidget);
+            connect(removeButton, &QPushButton::clicked, this, [this, pairId]()
+            {
+                if (QMessageBox::question(this,
+                                          tr("Remove pair"),
+                                          tr("Remove this pair from the review queue?")) == QMessageBox::Yes)
+                {
+                    mController->removePair(pairId);
+                }
+            });
+            headerLayout->addWidget(removeButton);
+
+            rowLayout->addLayout(headerLayout);
+
+            auto* statsLabel = new QLabel(pairStatsText(pair), rowWidget);
+            statsLabel->setStyleSheet(QStringLiteral("QLabel { color: %1; }")
+                                          .arg(TokenParserWidgetManager::instance()
+                                                   ->getColor(QLatin1String("text-secondary"))
+                                                   .name()));
+            rowLayout->addWidget(statsLabel);
+
+            auto* footerLayout = new QHBoxLayout();
+            footerLayout->setSpacing(6);
+            auto* pendingLabel = new QLabel(pairPendingText(pair), rowWidget);
+            footerLayout->addWidget(pendingLabel);
+            footerLayout->addStretch(1);
+            const int awaiting = mController->awaitingApprovalCount(pair.id);
+            auto* awaitingLabel = new QLabel(awaiting > 0
+                ? tr("%1 item(s) awaiting approval").arg(awaiting)
+                : tr("all flagged items approved"), rowWidget);
+            awaitingLabel->setStyleSheet(QStringLiteral("QLabel { color: %1; }")
+                                             .arg(awaiting > 0
+                                                 ? TokenParserWidgetManager::instance()
+                                                       ->getColor(QLatin1String("text-warning"))
+                                                       .name()
+                                                 : TokenParserWidgetManager::instance()
+                                                       ->getColor(QLatin1String("text-success"))
+                                                       .name()));
+            footerLayout->addWidget(awaitingLabel);
+            rowLayout->addLayout(footerLayout);
+
+            item->setSizeHint(rowWidget->sizeHint());
+            list->setItemWidget(item, rowWidget);
         }
     }
 
-    QTreeWidgetItem* SyncPreviewDialog::loadMoreItem(int remaining)
+    QString SyncPreviewDialog::pairStatsText(const Pair& pair) const
     {
-        auto* item = new QTreeWidgetItem();
-        item->setText(0, tr("Load more (%1 remaining)").arg(remaining));
-        return item;
+        const PairSummary summary = mController->summary(pair.id);
+        return tr("local: %1 file(s), %2 dir(s), %3 — remote: %4 file(s), %5 dir(s), %6")
+            .arg(summary.localFiles)
+            .arg(summary.localDirs)
+            .arg(GuiText::sizeBytesText(summary.localBytes))
+            .arg(summary.remoteFiles)
+            .arg(summary.remoteDirs)
+            .arg(GuiText::sizeBytesText(summary.remoteBytes));
     }
 
-    QString SyncPreviewDialog::rowBadge(const Row& row, bool reFlagged) const
+    QString SyncPreviewDialog::pairPendingText(const Pair& pair) const
     {
-        QString badge;
-        switch (row.kind)
+        const PairSummary summary = mController->summary(pair.id);
+        QStringList pieces;
+        if (summary.pendingLocalFiles > 0)
         {
-            case RowKind::Identical:
-                break;
-            case RowKind::LocalOnly:
-                break;
-            case RowKind::RemoteOnly:
-                break;
-            case RowKind::BothDiffer:
-                badge = QStringLiteral("CONFLICT: both differ");
-                break;
-            case RowKind::Conflict:
-                badge = QStringLiteral("CONFLICT: same content, different name");
-                break;
-            case RowKind::Blocker:
-                badge = (row.blockerReason == BlockerReason::TypeMismatch)
-                    ? QStringLiteral("BLOCKER: file vs folder")
-                    : QStringLiteral("BLOCKER: case-insensitive name collision");
-                break;
+            pieces << tr("%1 file(s) to local (%2)")
+                          .arg(summary.pendingLocalFiles)
+                          .arg(GuiText::sizeBytesText(summary.pendingLocalBytes));
+        }
+        if (summary.pendingLocalRemoved > 0)
+        {
+            pieces << tr("%1 to local trash").arg(summary.pendingLocalRemoved);
+        }
+        if (summary.pendingRemoteFiles > 0)
+        {
+            pieces << tr("%1 file(s) to remote (%2)")
+                          .arg(summary.pendingRemoteFiles)
+                          .arg(GuiText::sizeBytesText(summary.pendingRemoteBytes));
+        }
+        if (summary.pendingRemoteRemoved > 0)
+        {
+            pieces << tr("%1 to MEGA Rubbish").arg(summary.pendingRemoteRemoved);
         }
 
-        if (reFlagged)
+        if (pieces.isEmpty())
         {
-            badge += badge.isEmpty() ? QString() : QStringLiteral(" · ");
-            badge += QStringLiteral("changed — re-approve");
+            return tr("no pending transfers");
         }
-        return badge;
+        return tr("pending: %1").arg(pieces.join(QStringLiteral(" · ")));
     }
 
-    QString SyncPreviewDialog::rowTooltip(const Row& row) const
+    bool SyncPreviewDialog::pairVisible(const Pair& pair, const QString& filter) const
     {
-        QStringList notes;
-        if (row.hasIdenticalTwin && !row.twinPath.isEmpty())
-        {
-            notes << tr("Identical twin: %1").arg(row.twinPath);
-        }
-        if (row.underBlockedPath)
-        {
-            notes << tr("Under a blocked path: resolve the blocker above first");
-        }
-        if (row.kind == RowKind::Blocker)
-        {
-            notes << tr("Not resolvable by a transfer: needs rename/exclusion (later stage)");
-        }
-        return notes.join(QLatin1Char('\n'));
-    }
-
-    bool SyncPreviewDialog::rowVisible(const Row& row, const QString& filter) const
-    {
-        if (!filter.isEmpty() && !row.relativePath.contains(filter, Qt::CaseInsensitive))
+        if (!filter.isEmpty() && !pair.localPath.contains(filter, Qt::CaseInsensitive) &&
+            !pair.remotePath.contains(filter, Qt::CaseInsensitive))
         {
             return false;
         }
         return true;
     }
 
-    QHash<QString, RowDecision> SyncPreviewDialog::decisionsFor(const QString& pairId) const
+    void SyncPreviewDialog::openPair(const QString& pairId)
     {
-        QHash<QString, RowDecision> decisions;
-        if (const Pair* pair = mController->pair(pairId))
+        if (!mController->pair(pairId))
         {
-            for (const RowDecision& decision : pair->decisions)
-            {
-                decisions.insert(decision.relativePath, decision);
-            }
+            return;
         }
-        return decisions;
+
+        if (auto* existing = mDetailWindows.value(pairId).data())
+        {
+            // One window per pair: raise the open one instead of duplicating.
+            existing->raise();
+            activateWidgetWaylandSafe(existing);
+            return;
+        }
+
+        auto* detail = new SyncPreviewPairDetailDialog(pairId, mController, this);
+        mDetailWindows.insert(pairId, detail);
+        connect(detail, &QObject::destroyed, this, [this, pairId]()
+        {
+            mDetailWindows.remove(pairId);
+        });
+        detail->show();
     }
 
     void SyncPreviewDialog::updateSummary()
@@ -472,35 +328,5 @@ const RowPlan* rowPlan = plan.find(row.relativePath);
                                            .arg(mController->pairs().size())
                                            .arg(awaiting));
         }
-    }
-
-    void SyncPreviewDialog::onRowActionSelected(const QString& pairId, const QString& relativePath, Action action)
-    {
-        const Classification& classification = mController->classification(pairId);
-        const Row* row = classification.find(relativePath);
-        const bool isDirectory = row && ((row->local && row->local->isFolder()) ||
-                                         (row->remote && row->remote->isFolder()));
-
-        if (isDirectory)
-        {
-            // Directory-level actions trigger the consequences popup before
-            // anything is applied; canceling restores the previous state.
-            const Plan preview = mController->previewPlan(pairId, relativePath, action);
-            const RowPlan* directoryPlan = preview.find(relativePath);
-            static const RowPlan emptyPlan;
-            SyncPreviewConsequencesDialog popup(relativePath, directoryPlan ? *directoryPlan : emptyPlan, this);
-            if (popup.exec() != QDialog::Accepted)
-            {
-                rebuild();
-                return;
-            }
-        }
-
-        mController->setAction(pairId, relativePath, action);
-    }
-
-    void SyncPreviewDialog::onRowApprovalToggled(const QString& pairId, const QString& relativePath, bool approved)
-    {
-        mController->setApproved(pairId, relativePath, approved);
     }
 }

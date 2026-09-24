@@ -1,15 +1,15 @@
 #ifndef SYNCPREVIEWDIALOG_H
 #define SYNCPREVIEWDIALOG_H
 
-#include "SyncPreviewClassifier.h"
 #include "SyncPreviewQueue.h"
 
 #include <QDialog>
 #include <QHash>
+#include <QPointer>
 
 #include <memory>
 
-class QTreeWidgetItem;
+class QListWidgetItem;
 
 namespace Ui
 {
@@ -19,14 +19,15 @@ namespace Ui
 namespace SyncPreview
 {
     class PairController;
+    class SyncPreviewPairDetailDialog;
 
     // Pre-commit review dialog (Stage 2: runs entirely on the fake provider;
-    // the Stage 5 wiring swaps the pair source and the commit flow). Lists
-    // the queued candidate pairs and their classification rows, lets the
-    // user choose per-row/per-directory actions with the consequences popup,
-    // requires explicit approval on flagged rows, and gates the commit until
-    // everything flagged is approved. The queue and the decisions persist
-    // across closes and restarts.
+    // the Stage 5 wiring swaps the pair source and the commit flow). Pair-
+    // first flow (MEGA-2.7): the dialog lists the queued candidate pairs with
+    // per-pair summary details; opening a pair raises its own MC-style
+    // detail window, where per-row actions, the consequences popup, the
+    // approval gate and the filters live. The queue and the decisions
+    // persist across closes and restarts.
     class SyncPreviewDialog : public QDialog
     {
         Q_OBJECT
@@ -40,23 +41,20 @@ namespace SyncPreview
     private slots:
         void addPair();
         void rebuild();
-        void onRowActionSelected(const QString& pairId, const QString& relativePath, Action action);
-        void onRowApprovalToggled(const QString& pairId, const QString& relativePath, bool approved);
+        void openPair(const QString& pairId);
 
     private:
-        void setupColumns();
         void repopulate();
-        void populatePairRows(const Pair& pair, QTreeWidgetItem* pairNode, int shownCount);
-        QTreeWidgetItem* loadMoreItem(int remaining);
-        QString rowBadge(const Row& row, bool reFlagged) const;
-        QString rowTooltip(const Row& row) const;
-        bool rowVisible(const Row& row, const QString& filter) const;
-        QHash<QString, RowDecision> decisionsFor(const QString& pairId) const;
+        QString pairStatsText(const Pair& pair) const;
+        QString pairPendingText(const Pair& pair) const;
+        bool pairVisible(const Pair& pair, const QString& filter) const;
         void updateSummary();
+        void applyListPalette();
 
         std::unique_ptr<Ui::SyncPreviewDialog> mUi;
         PairController* mController = nullptr;
-        QHash<QString, int> mShownCounts;  // per pair: displayed row count
+        // One detail window per pair; QPointer nulls itself on destroy.
+        QHash<QString, QPointer<QDialog>> mDetailWindows;
     };
 }
 #endif // SYNCPREVIEWDIALOG_H
