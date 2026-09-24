@@ -5,7 +5,7 @@ status: Testing
 assignee:
   - '@kilo'
 created_date: '2026-09-24 11:29'
-updated_date: '2026-09-24 13:41'
+updated_date: '2026-09-24 14:51'
 labels:
   - sync-preview
 milestone: Sync pre-commit review
@@ -32,6 +32,7 @@ Build the review dialog UI (standalone widget dialog, StalledIssuesDialog module
 - [ ] #6 Multi-pair queue: several candidate pairs can be added, reviewed, and removed; list filterable, grouped by pair by default
 - [ ] #7 Runs entirely on the fake provider; no real API calls
 - [ ] #8 Closing and reopening the dialog restores the persisted pair queue and decisions; changed classifications are re-flagged; completed pairs are dropped
+- [ ] #9 Dev-run console (`just run`) no longer floods with the repeated fs.cpp mount-database log lines (verified live: 1 console line in 10s vs 1092 before); the full stdout mirror stays available via the `--debug` runtime flag; log-file verbosity unchanged
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -71,6 +72,36 @@ Stage 2 plan (drafted 2026-09-24, pending user approval):
 Plan revisions from user review (2026-09-24): (1) Approval gate locked: commit enabled once every requiresApproval (flagged) row of the pair is approved — ordinary rows follow their overridable recommended action without explicit sign-off. (2) Launch strategy locked: prod hook now instead of a separate demo target — MegaApplication::showSyncPreviewDialog() beside showStalledIssuesDialog + a 'Review sync pairs' item in the infoDialogMenu (recreateMegaMenuAction pattern, sync-01 icon) beside the syncs group; DialogOpener::findDialog/showDialog for reopen; the user demos via `just run`. Wizard button + real commit flow stay Stage 5. Queue file: Preferences::instance()->getDataPath()/sync-preview-queue.json, resolved by the dialog's default ctor (matches prod singleton patterns); PairController still takes the path explicitly for unit tests. (3) Fake pairs across restarts: the injected pair-source factory maps persisted pair labels back to fresh FakeScenarios (factory is injected per construction; no fake knowledge in model/controller). (4) Approval survives action changes on the same row (the user made the change knowingly); re-flagging (approval reset) happens only when the classification itself changed on re-verify.
 <!-- SECTION:PLAN:END -->
 
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-09-24 14:45
+---
+Testing feedback received 2026-09-24 (dialog functionally working; IA/readability rejected):
+1. Terminal floods with repeated SDK fs.cpp mount-database DEBUG logs during `just run` (→ recorded in MEGA-3).
+2. UI should be pair-first: list of pairs with summary details (size / file / dir counts), opening a pair opens a separate detail window; detail window must be a true Midnight-Commander-style dual pane with actions in the middle; keep the 'Show in-sync items' checkbox (→ recorded in MEGA-2.7).
+3. Greyed-out/unselected rows hard to read with the current palette (→ also MEGA-2.7).
+
+Consequence: MEGA-2.2 stays in Testing for now — its fate (Done vs rework inside 2.2) is the developer's call once MEGA-2.7 lands or the current shape is accepted. The rework ticket supersedes parts of AC #1/#6 as originally shaped.
+---
+
+created: 2026-09-24 14:48
+---
+Update 2026-09-24: per developer decision, the log-noise fix is tackled HERE (small fix after Testing → back to In Progress), and the standalone MEGA-3 ticket was archived (the stale 'MEGA-3' reference in comment #1 should read MEGA-2.2). Context carried over from MEGA-3:
+
+Reported while testing the dev build (`just run`): the terminal floods with repeated SDK-side DEBUG logs. Pattern (repeats for every path check): `09/24-14:36:58.798609 <tid> DTL  Opening mount database: /proc/mounts [fs.cpp:2223]` / `... DTL  Path <path> is on device <device> [fs.cpp:2348]`. The [fs.cpp:...] tags indicate the MEGA SDK's internal logger, not the app's MegaLogger.
+
+Investigation pointers (unverified — check first): where the app sets SDK log verbosity (search src/MEGASync for setLogLevel / setLoggerObject / logToConsole / MegaApi log setup in MegaApplication.cpp); likely levers: raise the SDK console threshold (e.g. to WARNING) while keeping DEBUG in the file — check whether file vs console levels are separately configurable here; or filter the specific repeated mount-database messages; check whether the noise is Debug-build-only and whether an env var / config knob already exists.
+
+Constraints (fork policy): read-only by default, minimal surface, prefer dev-only or configuration-level fix; if the fix would change prod logging behavior, describe the change + risks and get explicit approval first. AC (added to this ticket): `just run` console no longer floods with the repeated fs.cpp mount lines (at most one occurrence per session), log-file verbosity not reduced (or tradeoff documented), build + tests stay green.
+---
+
+created: 2026-09-24 14:49
+---
+Correction 2026-09-24: MEGA-3 was removed entirely at the developer's request (no archived record remains). The log-noise context lives in comment #2 below and is being fixed in this ticket.
+---
+<!-- COMMENTS:END -->
+
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
@@ -90,4 +121,6 @@ Verification
 To try it: quit the installed prod MEGAsync (single-instance lock), then `just run`, open the InfoDialog overflow menu → "Review sync pairs". Add pairs from the picker; decisions, approvals and pair add/remove persist across closing/reopening the dialog and app restarts (AC #8).
 
 Follow-ups (recorded, none blocking): consequences popup could also fire on approval-less directory cascades; commit button click is a Stage-5 placeholder by design.
+
+Post-Testing fix (2026-09-24, folded in from the removed MEGA-3 at the developer's request): squashed the dev-console log flood. Root cause: upstream Debug builds define LOG_TO_STDOUT (src/MEGASync/CMakeLists.txt `$<$<CONFIG:Debug>:...>`), which makes MegaSyncLogger mirror EVERY SDK log line to stdout — including the repeated fs.cpp mount-database checks ('Opening mount database: /proc/mounts' / 'Path ... is on device ...', LOG_LEVEL_MAX/DTL). File logging was never affected: MegaSyncLogger keeps full LOG_LEVEL_MAX verbosity in MEGAsync.log; the stdout mirror was the only lever. Fix: one-token change — removed LOG_TO_STDOUT from the Debug generator expression (runtime `--debug` flag in MegaApplication.cpp still ORs logToStdout on Linux, so the mirror remains opt-in). Behavior change, dev-build-only, flagged per fork policy: Debug builds now have a quiet console by default (`just run --debug` restores it); release/prod builds were never affected; no sync/transfer/update mechanism touched; upstream merge tax = one CMake token. Verified live: default run → 1 console line / 0 fs.cpp lines in 10s; `--debug` run → 1092 lines / 83 fs.cpp lines in 10s (opt-in works). just test still green (106 cases / 612 assertions); build clean. To use: `just run` for a quiet console, `just run --debug` when watching logs.
 <!-- SECTION:FINAL_SUMMARY:END -->

@@ -105,7 +105,11 @@ include(UserAttributesRequests/userattributesrequests.cmake)
 target_compile_definitions(MEGAsync
     PUBLIC
     QT_NO_CAST_FROM_ASCII QT_NO_CAST_TO_ASCII
-    $<$<CONFIG:Debug>:LOG_TO_STDOUT LOG_TO_LOGGER CREATE_COMPATIBLE_MINIDUMPS>
+    # Fork (MEGA-2.2): LOG_TO_STDOUT removed from Debug builds — it mirrored
+    # every SDK log line (e.g. repeated fs.cpp mount-database checks) to the
+    # terminal, flooding the dev console. Log files keep full verbosity; run
+    # with the runtime flag `--debug` to mirror logs to stdout on demand.
+    $<$<CONFIG:Debug>:LOG_TO_LOGGER CREATE_COMPATIBLE_MINIDUMPS>
     $<$<BOOL:${WIN32}>:PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN UNICODE>
     $<$<BOOL:${ENABLE_ISOLATED_GFX}>:ENABLE_SDK_ISOLATED_GFX>
     $<$<BOOL:${USE_BREAKPAD}>:USE_BREAKPAD>
