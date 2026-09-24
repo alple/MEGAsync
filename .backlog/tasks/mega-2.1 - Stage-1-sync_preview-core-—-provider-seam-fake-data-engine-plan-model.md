@@ -1,23 +1,23 @@
 ---
-id: MEGA-3.1
+id: MEGA-2.1
 title: 'Stage 1: sync_preview core — provider seam, fake-data engine, plan model'
 status: To Do
 assignee: []
-created_date: '2026-09-24 11:23'
+created_date: '2026-09-24 11:29'
 labels:
   - sync-preview
 milestone: Sync pre-commit review
 dependencies: []
-parent_task_id: MEGA-3
+parent_task_id: MEGA-2
 priority: high
 type: feature
-ordinal: 17000
+ordinal: 24000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Build the sync-preview core with no UI and no real API, per the MEGA-3 spec: provider interfaces (local-side, remote-side), a fake provider generating trees with edge cases for GUI development and demoing before real integration, the classification engine (local-only / remote-only / identical / both-differ / conflict / blocker, CRC-based content equality with size short-circuit), the consequences planner that turns a chosen action (L→R / R→L / best-effort, per file or directory) into an operation list ({upload, download, deleteRemote→Rubbish, deleteLocal→trash/backup, none}) with directory cascades, and JSON serialization of the pair queue + per-row decisions (versioned schema, corrupt file falls back to empty queue). The operation vocabulary may only use actions verified to exist in the real API (see MEGA-3 decision records). Unit-tested.
+Build the sync-preview core with no UI and no real API, per the MEGA-2 spec: provider interfaces (local-side, remote-side), a fake provider generating trees with edge cases for GUI development and demoing before real integration, the classification engine (local-only / remote-only / identical / both-differ / conflict / blocker, CRC-based content equality with size short-circuit), the consequences planner that turns a chosen action (L→R / R→L / best-effort, per file or directory) into an operation list ({upload, download, deleteRemote→Rubbish, deleteLocal→trash/backup, none}) with directory cascades, and JSON serialization of the pair queue + per-row decisions (versioned schema, corrupt file falls back to empty queue). The operation vocabulary may only use actions verified to exist in the real API (see MEGA-2 decision records). Unit-tested.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

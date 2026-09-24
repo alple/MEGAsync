@@ -1,24 +1,24 @@
 ---
-id: MEGA-3.3
+id: MEGA-2.3
 title: 'Stage 3: real providers — local walk + remote node-cache enumeration'
 status: To Do
 assignee: []
-created_date: '2026-09-24 11:23'
-updated_date: '2026-09-24 11:23'
+created_date: '2026-09-24 11:29'
+updated_date: '2026-09-24 11:29'
 labels:
   - sync-preview
 milestone: Sync pre-commit review
 dependencies:
-  - MEGA-3.1
-parent_task_id: MEGA-3
+  - MEGA-2.1
+parent_task_id: MEGA-2
 type: feature
-ordinal: 19000
+ordinal: 26000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Implement the real providers behind the Stage-1 interfaces: local-side recursive filesystem walk (cancellable, QtConcurrent pattern like BackupCandidatesFolderSizeRequester; CRC via existing getCRC path with size short-circuit; error rows for unreadable/broken-symlink/zero-byte items) and remote-side enumeration via MegaApi::getChildren per folder over the node cache (ORDER_NONE fast path, batch overload, paged listChildNodesLexicographically for huge folders — verified 2026-09-24, see MEGA-3 decision records). Strictly read-only: no writes, no engine interaction. The demo keeps working by swapping fake↔real providers in configuration.
+Implement the real providers behind the Stage-1 interfaces: local-side recursive filesystem walk (cancellable, QtConcurrent pattern like BackupCandidatesFolderSizeRequester; CRC via existing getCRC path with size short-circuit; error rows for unreadable/broken-symlink/zero-byte items) and remote-side enumeration via MegaApi::getChildren per folder over the node cache (ORDER_NONE fast path, batch overload, paged listChildNodesLexicographically for huge folders — verified 2026-09-24, see MEGA-2 decision records). Strictly read-only: no writes, no engine interaction. The demo keeps working by swapping fake↔real providers in configuration.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

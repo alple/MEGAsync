@@ -1,23 +1,25 @@
 ---
-id: MEGA-2.12
+id: MEGA-2.5
 title: 'Stage 5: commit orchestration + entry-point wiring'
 status: To Do
 assignee: []
-created_date: '2026-09-24 11:06'
-updated_date: '2026-09-24 11:23'
+created_date: '2026-09-24 11:29'
+updated_date: '2026-09-24 11:29'
 labels:
   - sync-preview
 milestone: Sync pre-commit review
-dependencies: []
+dependencies:
+  - MEGA-2.2
+  - MEGA-2.4
 parent_task_id: MEGA-2
 type: feature
-ordinal: 14000
+ordinal: 28000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Wire the review into the app: commit orchestration per the updated user model — approval gate (commit disabled until all rows approved), then hand the approved pair into the standard create-sync dialog pre-filled (small plumbing edit in SyncsData/SyncsComponent); the approved plan is applied (Stage 4) only on the user's final confirm in that dialog, then re-verified and the sync created active; canceling applies nothing. Fallback if pre-fill proves infeasible: in-dialog confirmation calling SyncController::addSync directly. Plus the three entry points from the MEGA-2 ledger: MegaApplication hook beside showStalledIssuesDialog, Review button in the Add-Sync wizard, tray/syncs-menu item. Merge surface stays at the ledgered minimum.
+Wire the review into the app: commit orchestration per the MEGA-2 user model — approval gate (commit disabled until all rows approved), then hand the approved pair into the standard create-sync dialog pre-filled (small plumbing edit in SyncsData/SyncsComponent); the approved plan is applied (Stage 4) only on the user's final confirm in that dialog, then re-verified and the sync created active; canceling applies nothing. Fallback if pre-fill proves infeasible: in-dialog confirmation calling SyncController::addSync directly. Plus the three entry points from the touch-point ledger: MegaApplication hook beside showStalledIssuesDialog, Review button in the Add-Sync wizard, tray/syncs-menu item. Merge surface stays at the ledgered minimum.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria

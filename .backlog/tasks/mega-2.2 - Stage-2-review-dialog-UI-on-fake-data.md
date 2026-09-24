@@ -1,23 +1,24 @@
 ---
-id: MEGA-2.9
+id: MEGA-2.2
 title: 'Stage 2: review dialog UI on fake data'
 status: To Do
 assignee: []
-created_date: '2026-09-24 11:06'
-updated_date: '2026-09-24 11:23'
+created_date: '2026-09-24 11:29'
+updated_date: '2026-09-24 11:29'
 labels:
   - sync-preview
 milestone: Sync pre-commit review
-dependencies: []
+dependencies:
+  - MEGA-2.1
 parent_task_id: MEGA-2
 type: feature
-ordinal: 11000
+ordinal: 25000
 ---
 
 ## Description
 
 <!-- SECTION:DESCRIPTION:BEGIN -->
-Build the review dialog UI (standalone widget dialog, StalledIssuesDialog module pattern — all-new files, per MEGA-2.3) running entirely on the Stage-1 fake provider: dual-pane rows (local left / remote right), per-row and per-directory action choice (L→R / R→L / best-effort) with recommended action marked and overridable, conflict/blocker flags with explicit approval, commit gated until all rows approved, directory-action consequences popup, identical-rows hidden by default with toggle, row-count cap with load-more, multi-pair queue (add/remove pairs, filterable list grouped by pair). No real API integration in this stage.
+Build the review dialog UI (standalone widget dialog, StalledIssuesDialog module pattern — all-new files, per MEGA-2 UI decision) running entirely on the Stage-1 fake provider: dual-pane rows (local left / remote right), per-row and per-directory action choice (L→R / R→L / best-effort) with recommended action marked and overridable, conflict/blocker flags with explicit approval, commit gated until all rows approved, directory-action consequences popup, identical-rows hidden by default with toggle, row-count cap with load-more, multi-pair queue (add/remove pairs, filterable list grouped by pair), and restore of the persisted pair queue on reopen. No real API integration in this stage.
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
