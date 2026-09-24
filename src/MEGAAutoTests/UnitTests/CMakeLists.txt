@@ -41,6 +41,11 @@ set(UNIT_TEST_FILES
     platform/PlatformTests.cpp
     syncs/control/MegaIgnoreManagerTests.cpp
     syncs/control/SyncControllerTests.cpp
+    sync_preview/FakeSyncPreviewProviderTests.cpp
+    sync_preview/SyncPreviewClassifierTests.cpp
+    sync_preview/SyncPreviewDemoTests.cpp
+    sync_preview/SyncPreviewPlannerTests.cpp
+    sync_preview/SyncPreviewQueueStoreTests.cpp
 )
 
 if(USE_BREAKPAD)
@@ -81,6 +86,7 @@ include(${MegaSyncDir}/platform/platform.cmake)
 include(${MegaSyncDir}/transfers/transfers.cmake)
 include(${MegaSyncDir}/stalled_issues/stalledissues.cmake)
 include(${MegaSyncDir}/node_selector/nodeselector.cmake)
+include(${MegaSyncDir}/sync_preview/syncpreview.cmake)
 include(${MegaSyncDir}/notifications/notifications.cmake)
 include(${MegaSyncDir}/UserAttributesRequests/userattributesrequests.cmake)
 

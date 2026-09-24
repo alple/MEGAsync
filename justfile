@@ -36,6 +36,12 @@ test *args:
     cmake --build {{build_dir}} --target UnitTests -j $(nproc)
     {{build_dir}}/src/MEGAAutoTests/UnitTests/UnitTests {{broken_tests}} {{args}}
 
+# Print a human-readable dump of the sync_preview core (Stage 1, fake data):
+# classification rows, the recommended plan, and a plan with sample decisions
+# (cascades, overrides, warnings, consequences).
+demo-syncpreview *args:
+    just test '"sync preview demo*"' -s {{args}}
+
 # Run the dev-built app. NOTE: uses the prod settings/data dir directly —
 # quit the installed prod MEGAsync first (single-instance lock, same data).
 run *args:
