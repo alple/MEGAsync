@@ -62,9 +62,32 @@
       </widget>
      </item>
      <item>
-      <widget class="QCheckBox" name="showInSyncToggle">
+      <widget class="QCheckBox" name="sameFilterCheck">
        <property name="text">
-        <string>Show in-sync items</string>
+        <string>Same</string>
+       </property>
+       <property name="checked">
+        <bool>false</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="differentFilterCheck">
+       <property name="text">
+        <string>Different</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QCheckBox" name="newFilterCheck">
+       <property name="text">
+        <string>New</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
        </property>
       </widget>
      </item>
@@ -94,6 +117,11 @@
       <column>
        <property name="text">
         <string>Local path</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>Status</string>
        </property>
       </column>
       <column>
@@ -139,6 +167,11 @@
       <column>
        <property name="text">
         <string>Remote path</string>
+       </property>
+      </column>
+      <column>
+       <property name="text">
+        <string>Status</string>
        </property>
       </column>
       <column>

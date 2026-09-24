@@ -8967,6 +8967,18 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <source>all flagged items approved</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Same content, different name — needs approval</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Blocker: file vs folder at the same path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Blocker: case-insensitive name collision</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SyncPreview::SyncPreviewRowWidget</name>
@@ -9037,10 +9049,6 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Show in-sync items</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Local path</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9062,6 +9070,38 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
     <message>
         <source>Modified</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Same</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Different</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>New</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Status</source>
+        <translation type="unfinished">Status</translation>
+    </message>
+    <message>
+        <source>Missing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Blocked</source>
+        <translation type="unfinished">Blocked</translation>
+    </message>
+    <message>
+        <source>newer: local</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>newer: remote</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

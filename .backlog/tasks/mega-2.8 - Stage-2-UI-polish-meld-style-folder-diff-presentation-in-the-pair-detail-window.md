@@ -3,9 +3,11 @@ id: MEGA-2.8
 title: >-
   Stage 2 UI polish: meld-style folder-diff presentation in the pair detail
   window
-status: To Do
-assignee: []
+status: Testing
+assignee:
+  - agent
 created_date: '2026-09-24 18:49'
+updated_date: '2026-09-24 19:23'
 labels:
   - sync-preview
 milestone: Sync pre-commit review
@@ -44,3 +46,28 @@ Follow-up from MEGA-2.7 Testing feedback (2026-09-24): the two-pane detail windo
 - [ ] #5 Scope guard: no model/controller changes; fake data only (Stage 2); lock-step panes, path filter, load-more cap, consequences popup, commit gating, multi-pair add/remove preserved; no real API calls
 - [ ] #6 just build compiles clean and just test stays green
 <!-- AC:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Implemented meld-style folder-diff presentation in the pair detail window (Stage 2, fake data only). Build green (`just build`), tests green (`just test`: 646 assertions / 108 cases). Diff = 3 gui files in sync_preview/gui only (no model/controller changes).
+
+**AC#1 — per-side states:** file-local `PaneState` (Same/Modified/New/Missing/Blocked) + `stateFor(row, side)`: Identical→Same (both), BothDiffer→Modified (both), LocalOnly/RemoteOnly/Conflict→New on the existing side + Missing on the other (classifier keeps Conflict rows one-sided), Blocker→Blocked on BOTH panes. Colors per pane from tokens only: New=text-success, Modified=text-info, Blocked=text-error, Same/Missing=text-secondary. Bold New/Modified/Blocked, strikethrough Missing (path + status columns; size/modified keep plain font, take state color). Replaced the MEGA-2.7 shared per-row color + `[CONFLICT/BLOCKER…]` badge prefix.
+
+**AC#2 — Status column:** added to both panes (Path | Status | Size | Modified); status = state word + compact "newer: local/remote" suffix for two-sided file rows (equal timestamps no longer spell "same"; the old re-approve warning text stays only on the action strip's label).
+
+**AC#3 — state filters:** `showInSyncToggle` replaced by Same (unchecked by default) / Different / New checkboxes. Bucketing: Same=Identical, Different=BothDiffer, New=LocalOnly/RemoteOnly/Conflict (meld semantics: each conflict side's name exists on one side only — conflict rows hide if New is unchecked). Blocker rows always visible.
+
+**AC#4 — icons:** folder `:/images/node_selector/search_filter/small_folder_default.png` (+@2x for HiDPI), file `:/images/themed/common/MIME/generic_small.svg`; plain QIcon from qrc, no new assets. MISSING-side cells show "—" gray-struck with no icon.
+
+**AC#5 — preserved:** row lock-step, scroll/selection sync, path filter, load-more cap, consequences popup, commit gating, multi-pair add/remove, theming rebuild on theme change. No model/controller changes.
+
+Notes for Testing (human eyes needed):
+- Icon dark-theme aliasing is unverified here (can't launch GUI against prod data dir): if generic_small.svg aliases badly in dark theme, AC#4 says skip icons.
+- Icons left-align in the path column while text stays space-indented (flat-icon look); meld indents icons with the tree — a delegate could fix later if it bothers.
+- Status column is fixed 140px so "Modified · newer: remote" fits; path column lost ~145px of stretch vs MEGA-2.7 at min window width.
+- Deliberate drop: MEGA-2.7's de-emphasis of cascade-covered rows (`coveredByPath`) — the meld mapping colors strictly by RowKind/side; covered rows still show their effective (parent-driven) action in the strip.
+- Pre-existing `setFirstItemColumnSpanned` deprecation warning (from MEGA-2.7's load-more row) left as-is — not this ticket's churn.
+
+Note: MEGA-2.7's baseline was committed as 534ec2c mid-session (not by this session); this diff sits cleanly on top of it, uncommitted as agreed.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -10,7 +10,10 @@
 
 #include <QBrush>
 #include <QCheckBox>
+#include <QCoreApplication>
+#include <QFont>
 #include <QHeaderView>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPalette>
@@ -34,9 +37,254 @@ namespace SyncPreview
         // Fixed width of the action strip between the two panes.
         constexpr int kMidWidth = 380;
 
+        // Fixed width of the per-pane meld-state column; it holds the state
+        // word plus the compact "newer: <side>" suffix. The remaining width
+        // goes to the stretching path column.
+        constexpr int kStatusWidth = 140;
+
         constexpr int kColPath = 0;
-        constexpr int kColSize = 1;
-        constexpr int kColModified = 2;
+        constexpr int kColStatus = 1;
+        constexpr int kColSize = 2;
+        constexpr int kColModified = 3;
+
+        // Entry-type icons, existing app resources only, no new image assets
+        // (MEGA-2.8 AC#4). The @2x folder variant is registered for HiDPI.
+        const QLatin1String kFolderIcon("images/node_selector/search_filter/small_folder_default.png");
+        const QLatin1String kFolderIcon2x("images/node_selector/search_filter/small_folder_default@2x.png");
+        const QLatin1String kFileIcon("images/themed/common/MIME/generic_small.svg");
+
+        // Meld folder-diff state, per pane per side (MEGA-2.8): one row can
+        // read New in the local pane and Missing in the remote pane.
+        enum class PaneState
+        {
+            Same,
+            Modified,
+            New,
+            Missing,
+            Blocked
+        };
+
+        // How one side of one classification row reads in its pane.
+        struct PaneRender
+        {
+            PaneState state = PaneState::Same;
+            QString pathText;
+            QString statusText;
+            bool hasEntry = false;
+            bool isFolder = false;
+        };
+
+        const Entry* sideEntry(const Row& row, bool localSide)
+        {
+            if (localSide)
+            {
+                return row.local ? &*row.local : nullptr;
+            }
+            return row.remote ? &*row.remote : nullptr;
+        }
+
+        // Meld mapping of our RowKind, per side: blockers read Blocked on
+        // BOTH panes; a side without the entry reads Missing; per-side rows
+        // (local-only, remote-only, conflict) read New on the side that has
+        // the entry; paired content differs → Modified; identical → Same.
+        PaneState stateFor(const Row& row, const Entry* entry)
+        {
+            if (row.kind == RowKind::Blocker)
+            {
+                return PaneState::Blocked;
+            }
+            if (!entry)
+            {
+                return PaneState::Missing;
+            }
+            switch (row.kind)
+            {
+                case RowKind::Identical:
+                    return PaneState::Same;
+                case RowKind::BothDiffer:
+                    return PaneState::Modified;
+                case RowKind::LocalOnly:
+                case RowKind::RemoteOnly:
+                case RowKind::Conflict:
+                    return PaneState::New;
+                case RowKind::Blocker:
+                    break; // handled above
+            }
+            return PaneState::Same;
+        }
+
+        // Theme tokens only (MEGA-2.8 AC#2): Modified = text-info (blue),
+        // New = text-success (green), Blocked = text-error (bright red),
+        // Same/Missing = text-secondary (de-emphasized/gray).
+        QColor stateColor(PaneState state, TokenParserWidgetManager* theme)
+        {
+            switch (state)
+            {
+                case PaneState::Modified:
+                    return theme->getColor(QLatin1String("text-info"));
+                case PaneState::New:
+                    return theme->getColor(QLatin1String("text-success"));
+                case PaneState::Blocked:
+                    return theme->getColor(QLatin1String("text-error"));
+                case PaneState::Same:
+                case PaneState::Missing:
+                    return theme->getColor(QLatin1String("text-secondary"));
+            }
+            return theme->getColor(QLatin1String("text-primary"));
+        }
+
+        // Bold for New/Modified/Blocked, strikethrough for Missing, plain
+        // for Same (meld semantics). Applied to the path and status columns;
+        // size and modified take the state color but keep a plain font.
+        QFont stateFont(PaneState state, const QFont& base)
+        {
+            QFont font = base;
+            switch (state)
+            {
+                case PaneState::New:
+                case PaneState::Modified:
+                case PaneState::Blocked:
+                    font.setBold(true);
+                    break;
+                case PaneState::Missing:
+                    font.setStrikeOut(true);
+                    break;
+                case PaneState::Same:
+                    break;
+            }
+            return font;
+        }
+
+        QString stateText(PaneState state)
+        {
+            switch (state)
+            {
+                case PaneState::Same:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Same");
+                case PaneState::Modified:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Modified");
+                case PaneState::New:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "New");
+                case PaneState::Missing:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Missing");
+                case PaneState::Blocked:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Blocked");
+            }
+            return QString();
+        }
+
+        // Newer-side marker as a compact status suffix (MEGA-2.8): rows with
+        // a file on both sides only; equal timestamps say it themselves.
+        QString newerSuffix(const Row& row)
+        {
+            if (!(row.local && row.remote) || row.local->isFolder() || row.remote->isFolder())
+            {
+                return QString();
+            }
+            if (row.local->modifiedTime > row.remote->modifiedTime)
+            {
+                return QCoreApplication::translate("SyncPreviewPairDetailDialog", "newer: local");
+            }
+            if (row.local->modifiedTime < row.remote->modifiedTime)
+            {
+                return QCoreApplication::translate("SyncPreviewPairDetailDialog", "newer: remote");
+            }
+            return QString();
+        }
+
+        // Meld-style state filters (MEGA-2.8 AC#3): a row is visible when
+        // its bucket is checked — Same = identical, Different = both-differ,
+        // New = the entry exists on one side only (conflict rows included:
+        // each side's name exists on one side only, exactly what meld's New
+        // filter matches). Blocker rows stay visible regardless.
+        bool visibleUnderFilters(const Row& row, bool showSame, bool showDifferent, bool showNew)
+        {
+            if (row.kind == RowKind::Blocker)
+            {
+                return true;
+            }
+            switch (row.kind)
+            {
+                case RowKind::Identical:
+                    return showSame;
+                case RowKind::BothDiffer:
+                    return showDifferent;
+                case RowKind::LocalOnly:
+                case RowKind::RemoteOnly:
+                case RowKind::Conflict:
+                    return showNew;
+                case RowKind::Blocker:
+                    return true; // handled above
+            }
+            return true;
+        }
+
+        PaneRender renderSide(const Row& row, bool localSide, const QString& indent, const QString& newer)
+        {
+            const Entry* entry = sideEntry(row, localSide);
+            PaneRender render;
+            render.state = stateFor(row, entry);
+            render.hasEntry = entry != nullptr;
+            render.isFolder = entry && entry->isFolder();
+            render.pathText = indent + (entry ? entry->relativePath : QStringLiteral("—"));
+            render.statusText = stateText(render.state);
+            if (!newer.isEmpty())
+            {
+                render.statusText += QStringLiteral(" · ") + newer;
+            }
+            return render;
+        }
+
+        // One side pane's row for a classified path: state color on every
+        // column, bold/strike font on path + status, entry-type icon from
+        // existing app resources (MEGA-2.8 AC#2/#4).
+        QTreeWidgetItem* addSideRow(QTreeWidget* tree,
+                                    const PaneRender& render,
+                                    const QString& sizeText,
+                                    const QString& timeText,
+                                    const QString& tooltip,
+                                    TokenParserWidgetManager* theme)
+        {
+            auto* item = new QTreeWidgetItem();
+            // Uniform row height: the panes lay out identical rows, which is
+            // what keeps the three views line-locked.
+            item->setSizeHint(kColPath, QSize(0, kRowHeight));
+            item->setText(kColPath, render.pathText);
+            item->setText(kColStatus, render.statusText);
+            item->setText(kColSize, sizeText);
+            item->setText(kColModified, timeText);
+            if (!tooltip.isEmpty())
+            {
+                item->setToolTip(kColPath, tooltip);
+                item->setToolTip(kColStatus, tooltip);
+            }
+            const QColor color = stateColor(render.state, theme);
+            const QFont stateFontFor = stateFont(render.state, tree->font());
+            for (int column = 0; column < tree->columnCount(); ++column)
+            {
+                item->setForeground(column, QBrush(color));
+                if (column == kColPath || column == kColStatus)
+                {
+                    item->setFont(column, stateFontFor);
+                }
+            }
+            if (render.hasEntry)
+            {
+                QIcon icon;
+                if (render.isFolder)
+                {
+                    icon.addFile(QStringLiteral(":/") + kFolderIcon);
+                    icon.addFile(QStringLiteral(":/") + kFolderIcon2x);
+                }
+                else
+                {
+                    icon.addFile(QStringLiteral(":/") + kFileIcon);
+                }
+                item->setIcon(kColPath, icon);
+            }
+            tree->addTopLevelItem(item);
+            return item;
+        }
     }
 
     SyncPreviewPairDetailDialog::SyncPreviewPairDetailDialog(const QString& pairId,
@@ -67,7 +315,11 @@ namespace SyncPreview
 
         connect(mUi->closeButton, &QPushButton::clicked, this, &QDialog::close);
         connect(mUi->pathFilterEdit, &QLineEdit::textChanged, this, [this]() { rebuild(); });
-        connect(mUi->showInSyncToggle, &QCheckBox::toggled, this, [this](bool) { rebuild(); });
+        // Meld-style state filters (MEGA-2.8 AC#3): Same unchecked by
+        // default, so identical rows stay hidden unless asked for.
+        connect(mUi->sameFilterCheck, &QCheckBox::toggled, this, [this](bool) { rebuild(); });
+        connect(mUi->differentFilterCheck, &QCheckBox::toggled, this, [this](bool) { rebuild(); });
+        connect(mUi->newFilterCheck, &QCheckBox::toggled, this, [this](bool) { rebuild(); });
 
         connect(mController, &PairController::pairChanged, this, [this](const QString& pairId)
         {
@@ -114,8 +366,10 @@ namespace SyncPreview
             tree->setSelectionMode(QAbstractItemView::SingleSelection);
             QHeaderView* header = tree->header();
             header->setSectionResizeMode(kColPath, QHeaderView::Stretch);
+            header->setSectionResizeMode(kColStatus, QHeaderView::Fixed);
             header->setSectionResizeMode(kColSize, QHeaderView::Fixed);
             header->setSectionResizeMode(kColModified, QHeaderView::Fixed);
+            tree->setColumnWidth(kColStatus, kStatusWidth);
             tree->setColumnWidth(kColSize, 90);
             tree->setColumnWidth(kColModified, 130);
         }
@@ -191,13 +445,13 @@ namespace SyncPreview
         const Plan plan = mController->plan(mPairId);
 
         const QString filter = mUi->pathFilterEdit->text();
-        const bool showInSync = mUi->showInSyncToggle->isChecked();
+        // Meld-style state filters (MEGA-2.8 AC#3): Same hidden by default.
+        const bool showSame = mUi->sameFilterCheck->isChecked();
+        const bool showDifferent = mUi->differentFilterCheck->isChecked();
+        const bool showNew = mUi->newFilterCheck->isChecked();
 
         auto theme = TokenParserWidgetManager::instance();
-        const QColor normalColor = theme->getColor(QLatin1String("text-primary"));
-        const QColor secondaryColor = theme->getColor(QLatin1String("text-secondary"));
-        const QColor errorColor = theme->getColor(QLatin1String("text-error"));
-        const QColor warningColor = theme->getColor(QLatin1String("text-warning"));
+        const QColor primaryColor = theme->getColor(QLatin1String("text-primary"));
 
         QTreeWidget* leftTree = mUi->leftTree;
         QTreeWidget* midTree = mUi->midTree;
@@ -215,7 +469,8 @@ namespace SyncPreview
 
         for (const Row& row : classification.rows)
         {
-            if (!rowVisible(row, filter) || (!showInSync && row.kind == RowKind::Identical))
+            if (!rowVisible(row, filter) ||
+                !visibleUnderFilters(row, showSame, showDifferent, showNew))
             {
                 continue;
             }
@@ -230,48 +485,27 @@ namespace SyncPreview
             const bool reFlaggedRow = reFlagged.contains(row.relativePath);
 
             const QString indent = GuiText::indentFor(row.relativePath);
-            const QString badge = rowBadge(row, reFlaggedRow);
+            const QString newer = newerSuffix(row);
 
-            // Each pane spells the entry as its own side holds it (conflict
-            // rows may name it differently per side); a missing side reads
-            // as an empty pane cell.
-            QString localPathText = indent;
-            if (!badge.isEmpty())
-            {
-                localPathText += QStringLiteral("[%1]  ").arg(badge);
-            }
-            localPathText += row.local ? row.local->relativePath : QStringLiteral("—");
-            const QString remotePathText =
-                indent + (row.remote ? row.remote->relativePath : QStringLiteral("—"));
-
-            // One shared color per row across all panes: blockers must
-            // stand out, re-flags warn, identical/covered rows de-emphasize.
-            QColor color = normalColor;
-            if (row.kind == RowKind::Blocker)
-            {
-                color = errorColor;
-            }
-            else if (reFlaggedRow)
-            {
-                color = warningColor;
-            }
-            else if (row.kind == RowKind::Identical ||
-                     (rowPlan && !rowPlan->coveredByPath.isEmpty()))
-            {
-                color = secondaryColor;
-            }
+            // Per-side meld states (MEGA-2.8 AC#1): one row reads New on the
+            // side that holds the entry and Missing on the other, blockers
+            // read Blocked on both. The state explains the row; the conflict
+            // and blocker details live in the tooltips, the re-approve
+            // warning rides the action strip's label.
+            const PaneRender localRender = renderSide(row, true, indent, newer);
+            const PaneRender remoteRender = renderSide(row, false, indent, newer);
 
             const QString tooltip = rowTooltip(row);
 
-            addRowToTree(leftTree, localPathText, GuiText::sizeText(row.local),
-                         GuiText::timeText(row.local), tooltip, color);
-            addRowToTree(rightTree, remotePathText, GuiText::sizeText(row.remote),
-                         GuiText::timeText(row.remote), tooltip, color);
+            addSideRow(leftTree, localRender, GuiText::sizeText(row.local),
+                       GuiText::timeText(row.local), tooltip, theme.get());
+            addSideRow(rightTree, remoteRender, GuiText::sizeText(row.remote),
+                       GuiText::timeText(row.remote), tooltip, theme.get());
 
             // The action strip row: same index as both panes.
             auto* midItem = new QTreeWidgetItem();
             midItem->setSizeHint(0, QSize(kMidWidth, kRowHeight));
-            midItem->setForeground(0, QBrush(color));
+            midItem->setForeground(0, QBrush(primaryColor));
             midTree->addTopLevelItem(midItem);
             midTree->setItemWidget(midItem, 0,
                                    buildRowWidget(row, rowPlan ? *rowPlan : emptyPlan,
@@ -294,10 +528,10 @@ namespace SyncPreview
             });
             leftTree->setItemWidget(leftItem, kColPath, loadMoreButton);
 
-            addRowToTree(midTree, tr("Load more (%1 remaining)").arg(remaining),
-                         QString(), QString(), QString(), normalColor);
-            addRowToTree(rightTree, tr("Load more (%1 remaining)").arg(remaining),
-                         QString(), QString(), QString(), normalColor);
+            PaneRender loadMoreRender;
+            loadMoreRender.pathText = tr("Load more (%1 remaining)").arg(remaining);
+            addSideRow(midTree, loadMoreRender, QString(), QString(), QString(), theme.get());
+            addSideRow(rightTree, loadMoreRender, QString(), QString(), QString(), theme.get());
         }
 
         // Restore the scroll position across all panes.
@@ -344,30 +578,39 @@ namespace SyncPreview
         mSyncingPanes = false;
     }
 
-    QTreeWidgetItem* SyncPreviewPairDetailDialog::addRowToTree(QTreeWidget* tree,
-                                                               const QString& pathText,
-                                                               const QString& sizeText,
-                                                               const QString& timeText,
-                                                               const QString& tooltip,
-                                                               const QColor& color)
+    QTreeWidgetItem* SyncPreviewPairDetailDialog::loadMoreItem(int remaining)
     {
         auto* item = new QTreeWidgetItem();
-        // Uniform row height: the panes lay out identical rows, which is
-        // what keeps the three views line-locked.
         item->setSizeHint(kColPath, QSize(0, kRowHeight));
-        item->setText(kColPath, pathText);
-        item->setText(kColSize, sizeText);
-        item->setText(kColModified, timeText);
-        if (!tooltip.isEmpty())
-        {
-            item->setToolTip(kColPath, tooltip);
-        }
-        for (int column = 0; column < tree->columnCount(); ++column)
-        {
-            item->setForeground(column, QBrush(color));
-        }
-        tree->addTopLevelItem(item);
+        item->setText(kColPath, tr("Load more (%1 remaining)").arg(remaining));
         return item;
+    }
+
+    QString SyncPreviewPairDetailDialog::rowTooltip(const Row& row) const
+    {
+        QStringList notes;
+        if (row.hasIdenticalTwin && !row.twinPath.isEmpty())
+        {
+            notes << tr("Identical twin: %1").arg(row.twinPath);
+        }
+        if (row.kind == RowKind::Conflict)
+        {
+            // Was the badge text (MEGA-2.7); the meld rework spells the
+            // state in the status column and keeps the detail here.
+            notes << tr("Same content, different name — needs approval");
+        }
+        if (row.underBlockedPath)
+        {
+            notes << tr("Under a blocked path: resolve the blocker above first");
+        }
+        if (row.kind == RowKind::Blocker)
+        {
+            notes << (row.blockerReason == BlockerReason::TypeMismatch
+                ? tr("Blocker: file vs folder at the same path")
+                : tr("Blocker: case-insensitive name collision"));
+            notes << tr("Not resolvable by a transfer: needs rename/exclusion (later stage)");
+        }
+        return notes.join(QLatin1Char('\n'));
     }
 
     QWidget* SyncPreviewPairDetailDialog::buildRowWidget(const Row& row,
@@ -386,86 +629,6 @@ namespace SyncPreview
                 this,
                 &SyncPreviewPairDetailDialog::onRowApprovalToggled);
         return rowWidget;
-    }
-
-    QTreeWidgetItem* SyncPreviewPairDetailDialog::loadMoreItem(int remaining)
-    {
-        auto* item = new QTreeWidgetItem();
-        item->setSizeHint(kColPath, QSize(0, kRowHeight));
-        item->setText(kColPath, tr("Load more (%1 remaining)").arg(remaining));
-        return item;
-    }
-
-    QString SyncPreviewPairDetailDialog::rowBadge(const Row& row, bool reFlagged) const
-    {
-        QString badge;
-        switch (row.kind)
-        {
-            case RowKind::Identical:
-                break;
-            case RowKind::LocalOnly:
-                break;
-            case RowKind::RemoteOnly:
-                break;
-            case RowKind::BothDiffer:
-                badge = QStringLiteral("CONFLICT: both differ");
-                break;
-            case RowKind::Conflict:
-                badge = QStringLiteral("CONFLICT: same content, different name");
-                break;
-            case RowKind::Blocker:
-                badge = (row.blockerReason == BlockerReason::TypeMismatch)
-                    ? QStringLiteral("BLOCKER: file vs folder")
-                    : QStringLiteral("BLOCKER: case-insensitive name collision");
-                break;
-        }
-
-        // Newer-side marker: previously a dedicated column, folded into the
-        // badge area by the MC-style rework (both modified dates sit next to
-        // each other across the middle).
-        if (row.local && row.remote && !row.local->isFolder() && !row.remote->isFolder())
-        {
-            QString newer;
-            if (row.local->modifiedTime > row.remote->modifiedTime)
-            {
-                newer = QStringLiteral("newer: local");
-            }
-            else if (row.local->modifiedTime < row.remote->modifiedTime)
-            {
-                newer = QStringLiteral("newer: remote");
-            }
-            else
-            {
-                newer = QStringLiteral("same");
-            }
-            badge += badge.isEmpty() ? QString() : QStringLiteral(" · ");
-            badge += newer;
-        }
-
-        if (reFlagged)
-        {
-            badge += badge.isEmpty() ? QString() : QStringLiteral(" · ");
-            badge += QStringLiteral("changed — re-approve");
-        }
-        return badge;
-    }
-
-    QString SyncPreviewPairDetailDialog::rowTooltip(const Row& row) const
-    {
-        QStringList notes;
-        if (row.hasIdenticalTwin && !row.twinPath.isEmpty())
-        {
-            notes << tr("Identical twin: %1").arg(row.twinPath);
-        }
-        if (row.underBlockedPath)
-        {
-            notes << tr("Under a blocked path: resolve the blocker above first");
-        }
-        if (row.kind == RowKind::Blocker)
-        {
-            notes << tr("Not resolvable by a transfer: needs rename/exclusion (later stage)");
-        }
-        return notes.join(QLatin1Char('\n'));
     }
 
     bool SyncPreviewPairDetailDialog::rowVisible(const Row& row, const QString& filter) const

@@ -10,7 +10,6 @@
 
 #include <memory>
 
-class QColor;
 class QScrollBar;
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -29,10 +28,14 @@ namespace SyncPreview
     // action choice on a fixed strip BETWEEN the panes. The panes are
     // row-locked: every classified path is one row on all three views (a
     // side that misses the entry shows an empty pane cell), scrolling and
-    // selection move all panes together, like Midnight Commander. Opened
-    // from the pair-first list; non-modal so several pairs can be reviewed
-    // side by side. Shares the pair list's PairController: decisions made
-    // here are persisted and re-verified exactly as before. The window
+    // selection move all panes together, like Midnight Commander. Each pane
+    // reads its own side with meld's folder-diff states (MEGA-2.8): Same /
+    // Modified / New / Missing / Blocked, colored per SIDE so one row can
+    // read New on the left and Missing on the right, with Same/Different/New
+    // state filters (Same hidden by default, blockers always visible).
+    // Opened from the pair-first list; non-modal so several pairs can be
+    // reviewed side by side. Shares the pair list's PairController: decisions
+    // made here are persisted and re-verified exactly as before. The window
     // closes itself when its pair is removed from the queue.
     class SyncPreviewPairDetailDialog : public QDialog
     {
@@ -58,19 +61,12 @@ namespace SyncPreview
         // Keeps the panes aligned: same row index on every view.
         void syncScrollFrom(QScrollBar* source);
         void syncSelectionFrom(QTreeWidget* source);
-        QTreeWidgetItem* addRowToTree(QTreeWidget* tree,
-                                      const QString& pathText,
-                                      const QString& sizeText,
-                                      const QString& timeText,
-                                      const QString& tooltip,
-                                      const QColor& color);
         QWidget* buildRowWidget(const Row& row,
                                 const RowPlan& rowPlan,
                                 bool approved,
                                 bool reFlagged,
                                 QWidget* parent);
         QTreeWidgetItem* loadMoreItem(int remaining);
-        QString rowBadge(const Row& row, bool reFlagged) const;
         QString rowTooltip(const Row& row) const;
         bool rowVisible(const Row& row, const QString& filter) const;
         QHash<QString, RowDecision> decisionsFor() const;
