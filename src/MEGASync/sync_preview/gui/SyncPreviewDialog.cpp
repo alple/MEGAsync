@@ -1,6 +1,7 @@
 #include "SyncPreviewDialog.h"
 #include "ui_SyncPreviewDialog.h"
 #include "SyncPreviewFakePairPicker.h"
+#include "SyncPreviewGuiStyle.h"
 #include "SyncPreviewPairController.h"
 #include "SyncPreviewPairDetailDialog.h"
 #include "SyncPreviewGuiFormat.h"
@@ -15,6 +16,7 @@
 #include <QDir>
 #include <QFont>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
 #include <QListWidget>
@@ -32,6 +34,9 @@ namespace SyncPreview
     {
         mUi->setupUi(this);
         setAttribute(Qt::WA_DeleteOnClose);
+        // The MEGA app icon for the window/taskbar entry (the app-level icon
+        // does not reliably reach these non-modal windows under Wayland).
+        setWindowIcon(QIcon(QStringLiteral(":/images/app_ico.ico")));
 
         QString path = queueFilePath;
         if (path.isEmpty())
@@ -86,6 +91,14 @@ namespace SyncPreview
         // shown outside DialogOpener, e.g. from tests/scaffolding.)
         TokenParserWidgetManager::instance()->registerWidgetForTheming(this);
 
+        // Chrome shares the pair detail window's conventions: themed input,
+        // compact filter bar, quiet outline buttons (property-set, so the
+        // standard sheet re-themes them on theme change by itself).
+        GuiStyle::styleLineEdit(mUi->filterEdit);
+        mUi->filterEdit->setMaximumWidth(360);
+        GuiStyle::styleOutlineButton(mUi->addPairButton);
+        GuiStyle::styleOutlineButton(mUi->closeButton);
+
         applyListPalette();
         mController->restore();
         rebuild();
@@ -95,18 +108,12 @@ namespace SyncPreview
 
     void SyncPreviewDialog::applyListPalette()
     {
-        // Theme tokens instead of ad-hoc greys: rows and alternating bands
-        // use the app's surface colors, selection uses the app's inverse
-        // accent, so both color schemas keep sufficient contrast.
-        QPalette palette = mUi->pairsList->palette();
-        auto theme = TokenParserWidgetManager::instance();
-        palette.setColor(QPalette::Base, theme->getColor(QLatin1String("page-background")));
-        palette.setColor(QPalette::AlternateBase, theme->getColor(QLatin1String("surface-1")));
-        palette.setColor(QPalette::Text, theme->getColor(QLatin1String("text-primary")));
-        palette.setColor(QPalette::WindowText, theme->getColor(QLatin1String("text-primary")));
-        palette.setColor(QPalette::Highlight, theme->getColor(QLatin1String("surface-inverse-accent")));
-        palette.setColor(QPalette::HighlightedText, theme->getColor(QLatin1String("text-inverse-accent")));
-        mUi->pairsList->setPalette(palette);
+        // Theme tokens instead of ad-hoc greys: the whole window (header,
+        // filter row, footer) and the list sit on the page background, rows
+        // alternate with the surface color, selection uses the app's inverse
+        // accent — same read as the pair detail window.
+        GuiStyle::applyWindowPalette(this);
+        GuiStyle::applyViewPalette(mUi->pairsList);
     }
 
     void SyncPreviewDialog::addPair()
@@ -166,12 +173,14 @@ namespace SyncPreview
 
             auto* reviewButton = new QPushButton(tr("Review…"), rowWidget);
             reviewButton->setToolTip(tr("Opens the dual-pane detail window for this pair"));
+            GuiStyle::styleOutlineButton(reviewButton);
             const QString pairId = pair.id;
             connect(reviewButton, &QPushButton::clicked, this, [this, pairId]() { openPair(pairId); });
             headerLayout->addWidget(reviewButton);
 
             auto* commitButton = new QPushButton(tr("Commit pair"), rowWidget);
             commitButton->setToolTip(tr("Opens the pre-filled create-sync dialog (Stage 5)"));
+            GuiStyle::styleOutlineButton(commitButton);
             commitButton->setEnabled(mController->allApproved(pair.id));
             connect(commitButton, &QPushButton::clicked, this, [this]()
             {
@@ -182,6 +191,7 @@ namespace SyncPreview
             headerLayout->addWidget(commitButton);
 
             auto* removeButton = new QPushButton(tr("Remove"), rowWidget);
+            GuiStyle::styleOutlineButton(removeButton);
             connect(removeButton, &QPushButton::clicked, this, [this, pairId]()
             {
                 if (QMessageBox::question(this,

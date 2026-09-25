@@ -103,10 +103,10 @@
      </property>
      <widget class="QTreeWidget" name="leftTree">
       <property name="alternatingRowColors">
-       <bool>true</bool>
+       <bool>false</bool>
       </property>
       <property name="rootIsDecorated">
-       <bool>false</bool>
+       <bool>true</bool>
       </property>
       <property name="uniformRowHeights">
        <bool>true</bool>
@@ -121,11 +121,6 @@
       </column>
       <column>
        <property name="text">
-        <string>Status</string>
-       </property>
-      </column>
-      <column>
-       <property name="text">
         <string>Size</string>
        </property>
       </column>
@@ -135,28 +130,12 @@
        </property>
       </column>
      </widget>
-     <widget class="QTreeWidget" name="midTree">
-      <property name="rootIsDecorated">
-       <bool>false</bool>
-      </property>
-      <property name="uniformRowHeights">
-       <bool>true</bool>
-      </property>
-      <property name="selectionMode">
-       <enum>QAbstractItemView::NoSelection</enum>
-      </property>
-      <column>
-       <property name="text">
-        <string>Action &amp; approval</string>
-       </property>
-      </column>
-     </widget>
      <widget class="QTreeWidget" name="rightTree">
       <property name="alternatingRowColors">
-       <bool>true</bool>
+       <bool>false</bool>
       </property>
       <property name="rootIsDecorated">
-       <bool>false</bool>
+       <bool>true</bool>
       </property>
       <property name="uniformRowHeights">
        <bool>true</bool>
@@ -171,11 +150,6 @@
       </column>
       <column>
        <property name="text">
-        <string>Status</string>
-       </property>
-      </column>
-      <column>
-       <property name="text">
         <string>Size</string>
        </property>
       </column>
@@ -186,7 +160,7 @@
       </column>
      </widget>
     </widget>
-   </item>
+    </item>
    <item>
     <layout class="QHBoxLayout" name="footerLayout">
      <item>

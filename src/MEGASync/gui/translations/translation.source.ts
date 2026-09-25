@@ -8979,35 +8979,28 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <source>Blocker: case-insensitive name collision</source>
         <translation type="unfinished"></translation>
     </message>
-</context>
-<context>
-    <name>SyncPreview::SyncPreviewRowWidget</name>
     <message>
-        <source>Approved</source>
+        <source>Approve</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>(classification changed — re-approve)</source>
+        <source>Select a row to decide</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>L→R</source>
+        <source>Recommended: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>R→L</source>
+        <source>classification changed — re-approve</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Best-effort</source>
+        <source>recommended</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Do nothing</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source> — recommended</source>
+        <source>arrives in a later stage</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -9053,16 +9046,8 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Action &amp; approval</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Remote path</source>
         <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Close</source>
-        <translation type="unfinished">Close</translation>
     </message>
     <message>
         <source>Size</source>
@@ -9085,10 +9070,6 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Status</source>
-        <translation type="unfinished">Status</translation>
-    </message>
-    <message>
         <source>Missing</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9097,11 +9078,55 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished">Blocked</translation>
     </message>
     <message>
-        <source>newer: local</source>
+        <source>Best-effort</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>newer: remote</source>
+        <source>Do nothing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation type="unfinished">Close</translation>
+    </message>
+    <message>
+        <source>→</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>←</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>local → remote</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>remote → local</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>best-effort</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>do nothing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer local → remote</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Transfer remote → local</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Best-effort transfer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Leave this row unresolved (nothing transfers)</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

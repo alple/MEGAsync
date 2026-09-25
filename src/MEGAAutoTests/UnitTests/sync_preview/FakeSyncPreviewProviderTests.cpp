@@ -130,6 +130,22 @@ TEST_CASE("emptySides produces empty trees")
     CHECK(scenario.remote.isEmpty());
 }
 
+TEST_CASE("renameSwap pins the moved-content edge case")
+{
+    const FakeScenario scenario = FakeScenarios::renameSwap();
+
+    // foo.txt paired on both sides with different content; bar.txt holds
+    // the LOCAL foo.txt content under a new name on the remote side.
+    REQUIRE(scenario.local.find(QStringLiteral("foo.txt")) != nullptr);
+    REQUIRE(scenario.remote.find(QStringLiteral("foo.txt")) != nullptr);
+    REQUIRE(scenario.remote.find(QStringLiteral("bar.txt")) != nullptr);
+    CHECK(scenario.local.find(QStringLiteral("foo.txt"))->contentHash !=
+          scenario.remote.find(QStringLiteral("foo.txt"))->contentHash);
+    CHECK(scenario.local.find(QStringLiteral("foo.txt"))->contentHash ==
+          scenario.remote.find(QStringLiteral("bar.txt"))->contentHash);
+    CHECK_FALSE(scenario.local.contains(QStringLiteral("bar.txt")));
+}
+
 TEST_CASE("Tree lookup is exact and case-sensitive")
 {
     FakeTreeBuilder builder;

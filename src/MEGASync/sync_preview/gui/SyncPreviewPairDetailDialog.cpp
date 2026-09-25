@@ -1,17 +1,19 @@
 #include "SyncPreviewPairDetailDialog.h"
 #include "ui_SyncPreviewPairDetailDialog.h"
 #include "SyncPreviewGuiFormat.h"
+#include "SyncPreviewGuiStyle.h"
 #include "SyncPreviewPairController.h"
-#include "SyncPreviewRowWidget.h"
 #include "SyncPreviewConsequencesDialog.h"
 
 #include "ThemeManager.h"
 #include "TokenParserWidgetManager.h"
 
 #include <QBrush>
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QFont>
+#include <QFrame>
 #include <QHeaderView>
 #include <QIcon>
 #include <QLabel>
@@ -19,9 +21,17 @@
 #include <QPalette>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSet>
+#include <QSignalBlocker>
+#include <QSizePolicy>
 #include <QSplitter>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
+#include <QVBoxLayout>
+#include <QVector>
+
+#include <algorithm>
+#include <functional>
 
 namespace SyncPreview
 {
@@ -29,23 +39,13 @@ namespace SyncPreview
     {
         constexpr int kRowCap = 200;
 
-        // Uniform row height shared by all three panes: the row lock-step
-        // (scroll/selection sync) relies on every view laying out the same
-        // rows at the same heights.
-        constexpr int kRowHeight = 40;
-
-        // Fixed width of the action strip between the two panes.
-        constexpr int kMidWidth = 380;
-
-        // Fixed width of the per-pane meld-state column; it holds the state
-        // word plus the compact "newer: <side>" suffix. The remaining width
-        // goes to the stretching path column.
-        constexpr int kStatusWidth = 140;
+        // Meld-dense rows: the MC-era 40px height was sized for per-row
+        // widgets; plain tree rows read well at this height.
+        constexpr int kRowHeight = 26;
 
         constexpr int kColPath = 0;
-        constexpr int kColStatus = 1;
-        constexpr int kColSize = 2;
-        constexpr int kColModified = 3;
+        constexpr int kColSize = 1;
+        constexpr int kColModified = 2;
 
         // Entry-type icons, existing app resources only, no new image assets
         // (MEGA-2.8 AC#4). The @2x folder variant is registered for HiDPI.
@@ -64,30 +64,13 @@ namespace SyncPreview
             Blocked
         };
 
-        // How one side of one classification row reads in its pane.
-        struct PaneRender
-        {
-            PaneState state = PaneState::Same;
-            QString pathText;
-            QString statusText;
-            bool hasEntry = false;
-            bool isFolder = false;
-        };
-
-        const Entry* sideEntry(const Row& row, bool localSide)
-        {
-            if (localSide)
-            {
-                return row.local ? &*row.local : nullptr;
-            }
-            return row.remote ? &*row.remote : nullptr;
-        }
-
         // Meld mapping of our RowKind, per side: blockers read Blocked on
         // BOTH panes; a side without the entry reads Missing; per-side rows
         // (local-only, remote-only, conflict) read New on the side that has
         // the entry; paired content differs → Modified; identical → Same.
-        PaneState stateFor(const Row& row, const Entry* entry)
+        // Folders paired on both sides read from the classifier's subtree
+        // verdict (Identical vs BothDiffer), like meld's directory rows.
+        PaneState stateFor(const Row& row, const std::optional<Entry>& entry)
         {
             if (row.kind == RowKind::Blocker)
             {
@@ -134,8 +117,7 @@ namespace SyncPreview
         }
 
         // Bold for New/Modified/Blocked, strikethrough for Missing, plain
-        // for Same (meld semantics). Applied to the path and status columns;
-        // size and modified take the state color but keep a plain font.
+        // for Same (meld semantics).
         QFont stateFont(PaneState state, const QFont& base)
         {
             QFont font = base;
@@ -173,25 +155,6 @@ namespace SyncPreview
             return QString();
         }
 
-        // Newer-side marker as a compact status suffix (MEGA-2.8): rows with
-        // a file on both sides only; equal timestamps say it themselves.
-        QString newerSuffix(const Row& row)
-        {
-            if (!(row.local && row.remote) || row.local->isFolder() || row.remote->isFolder())
-            {
-                return QString();
-            }
-            if (row.local->modifiedTime > row.remote->modifiedTime)
-            {
-                return QCoreApplication::translate("SyncPreviewPairDetailDialog", "newer: local");
-            }
-            if (row.local->modifiedTime < row.remote->modifiedTime)
-            {
-                return QCoreApplication::translate("SyncPreviewPairDetailDialog", "newer: remote");
-            }
-            return QString();
-        }
-
         // Meld-style state filters (MEGA-2.8 AC#3): a row is visible when
         // its bucket is checked — Same = identical, Different = both-differ,
         // New = the entry exists on one side only (conflict rows included:
@@ -219,71 +182,71 @@ namespace SyncPreview
             return true;
         }
 
-        PaneRender renderSide(const Row& row, bool localSide, const QString& indent, const QString& newer)
+        // The action panel's pressable buttons, in a fixed order: the left
+        // pane stays on the left and the right pane on the right, so the
+        // buttons only flip the arrow (pane directions, not label words).
+        const QVector<Action>& actionChoices()
         {
-            const Entry* entry = sideEntry(row, localSide);
-            PaneRender render;
-            render.state = stateFor(row, entry);
-            render.hasEntry = entry != nullptr;
-            render.isFolder = entry && entry->isFolder();
-            render.pathText = indent + (entry ? entry->relativePath : QStringLiteral("—"));
-            render.statusText = stateText(render.state);
-            if (!newer.isEmpty())
-            {
-                render.statusText += QStringLiteral(" · ") + newer;
-            }
-            return render;
+            static const QVector<Action> choices{Action::LocalToRemote, Action::RemoteToLocal,
+                Action::BestEffort, Action::None};
+            return choices;
         }
 
-        // One side pane's row for a classified path: state color on every
-        // column, bold/strike font on path + status, entry-type icon from
-        // existing app resources (MEGA-2.8 AC#2/#4).
-        QTreeWidgetItem* addSideRow(QTreeWidget* tree,
-                                    const PaneRender& render,
-                                    const QString& sizeText,
-                                    const QString& timeText,
-                                    const QString& tooltip,
-                                    TokenParserWidgetManager* theme)
+        // The button face: just the arrow for the pane-to-pane transfers.
+        QString actionButtonText(Action action)
         {
-            auto* item = new QTreeWidgetItem();
-            // Uniform row height: the panes lay out identical rows, which is
-            // what keeps the three views line-locked.
-            item->setSizeHint(kColPath, QSize(0, kRowHeight));
-            item->setText(kColPath, render.pathText);
-            item->setText(kColStatus, render.statusText);
-            item->setText(kColSize, sizeText);
-            item->setText(kColModified, timeText);
-            if (!tooltip.isEmpty())
+            switch (action)
             {
-                item->setToolTip(kColPath, tooltip);
-                item->setToolTip(kColStatus, tooltip);
+                case Action::LocalToRemote:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "→");
+                case Action::RemoteToLocal:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "←");
+                case Action::BestEffort:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Best-effort");
+                case Action::None:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Do nothing");
             }
-            const QColor color = stateColor(render.state, theme);
-            const QFont stateFontFor = stateFont(render.state, tree->font());
-            for (int column = 0; column < tree->columnCount(); ++column)
+            return QStringLiteral("?");
+        }
+
+        // The prose form, for hints and tooltips.
+        QString actionName(Action action)
+        {
+            switch (action)
             {
-                item->setForeground(column, QBrush(color));
-                if (column == kColPath || column == kColStatus)
-                {
-                    item->setFont(column, stateFontFor);
-                }
+                case Action::LocalToRemote:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "local → remote");
+                case Action::RemoteToLocal:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "remote → local");
+                case Action::BestEffort:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "best-effort");
+                case Action::None:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "do nothing");
             }
-            if (render.hasEntry)
+            return QStringLiteral("?");
+        }
+
+        QString actionTooltip(Action action)
+        {
+            switch (action)
             {
-                QIcon icon;
-                if (render.isFolder)
-                {
-                    icon.addFile(QStringLiteral(":/") + kFolderIcon);
-                    icon.addFile(QStringLiteral(":/") + kFolderIcon2x);
-                }
-                else
-                {
-                    icon.addFile(QStringLiteral(":/") + kFileIcon);
-                }
-                item->setIcon(kColPath, icon);
+                case Action::LocalToRemote:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Transfer local → remote");
+                case Action::RemoteToLocal:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Transfer remote → local");
+                case Action::BestEffort:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Best-effort transfer");
+                case Action::None:
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Leave this row unresolved (nothing transfers)");
             }
-            tree->addTopLevelItem(item);
-            return item;
+            return QString();
+        }
+
+        // The tree-displayed name: the last path segment.
+        QString baseNameOf(const QString& relativePath)
+        {
+            const int slash = relativePath.lastIndexOf(QLatin1Char('/'));
+            return slash < 0 ? relativePath : relativePath.mid(slash + 1);
         }
     }
 
@@ -297,6 +260,9 @@ namespace SyncPreview
     {
         mUi->setupUi(this);
         setAttribute(Qt::WA_DeleteOnClose);
+        // The MEGA app icon for the window/taskbar entry (the app-level icon
+        // does not reliably reach these non-modal windows under Wayland).
+        setWindowIcon(QIcon(QStringLiteral(":/images/app_ico.ico")));
 
         // Non-modal by construction (shown via show(), never exec()): the
         // pair list stays usable while detail windows are open.
@@ -335,9 +301,9 @@ namespace SyncPreview
                 close();
             }
         });
-        // Per-row foregrounds and the panes' palettes are token colors
-        // resolved at populate time: re-resolve when the theme changes so
-        // both color schemas read well.
+        // Row foregrounds, the panes' palettes and the action panel's colors
+        // are token colors resolved at populate time: re-resolve when the
+        // theme changes so both color schemas read well.
         connect(ThemeManager::instance(), &ThemeManager::themeChanged, this, [this]()
         {
             applyPanesPalette();
@@ -345,6 +311,7 @@ namespace SyncPreview
         });
 
         setupPanes();
+        buildActionPanel();
         applyPanesPalette();
         mShownCount = kRowCap;
         rebuild();
@@ -354,72 +321,201 @@ namespace SyncPreview
 
     void SyncPreviewPairDetailDialog::setupPanes()
     {
-        QTreeWidget* midTree = mUi->midTree;
-        midTree->setSelectionMode(QAbstractItemView::NoSelection);
-        midTree->setFocusPolicy(Qt::NoFocus);
-        midTree->header()->setSectionResizeMode(0, QHeaderView::Stretch);
-        midTree->setMinimumWidth(kMidWidth);
-        midTree->setMaximumWidth(kMidWidth);
+        // The panes absorb ALL spare vertical space: the top chrome (title +
+        // filter row) and the footer stay at their natural height instead of
+        // each grabbing a share of it. A horizontal QSplitter defaults to a
+        // non-expanding vertical policy, which is why the chrome used to
+        // swallow half the window.
+        mUi->panesSplitter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        if (auto* mainLayout = qobject_cast<QVBoxLayout*>(layout()))
+        {
+            mainLayout->setStretchFactor(mUi->panesSplitter, 1);
+        }
+
+        // The filter row shares the pair list's chrome conventions: themed
+        // input (no bright native bar), capped width so the top bar stays
+        // compact, and the window's outline close button.
+        GuiStyle::styleLineEdit(mUi->pathFilterEdit);
+        mUi->pathFilterEdit->setMaximumWidth(360);
+        GuiStyle::styleOutlineButton(mUi->closeButton);
 
         for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
         {
+            tree->setMinimumHeight(160);
             tree->setSelectionMode(QAbstractItemView::SingleSelection);
             QHeaderView* header = tree->header();
             header->setSectionResizeMode(kColPath, QHeaderView::Stretch);
-            header->setSectionResizeMode(kColStatus, QHeaderView::Fixed);
             header->setSectionResizeMode(kColSize, QHeaderView::Fixed);
             header->setSectionResizeMode(kColModified, QHeaderView::Fixed);
-            tree->setColumnWidth(kColStatus, kStatusWidth);
             tree->setColumnWidth(kColSize, 90);
             tree->setColumnWidth(kColModified, 130);
-        }
 
-        QSplitter* splitter = mUi->panesSplitter;
-        splitter->setStretchFactor(0, 1);
-        splitter->setStretchFactor(1, 0);
-        splitter->setStretchFactor(2, 1);
-
-        // Row lock-step: scrolling one pane scrolls all three; selecting a
-        // row in a pane selects the same row in the sibling pane.
-        for (QTreeWidget* tree : {mUi->leftTree, mUi->midTree, mUi->rightTree})
-        {
+            // Pane lock-step, meld-style: scrolling, selecting, expanding or
+            // collapsing a row moves the same row in the sibling pane.
             connect(tree->verticalScrollBar(), &QScrollBar::valueChanged, this, [this, tree]()
             {
                 syncScrollFrom(tree->verticalScrollBar());
             });
+            connect(tree, &QTreeWidget::currentItemChanged, this,
+                [this, tree](QTreeWidgetItem*, QTreeWidgetItem*)
+            {
+                if (!mSyncingPanes)
+                {
+                    syncSelectionFrom(tree);
+                }
+            });
+            connect(tree, &QTreeWidget::itemExpanded, this, [this, tree](QTreeWidgetItem* item)
+            {
+                if (!mSyncingPanes)
+                {
+                    syncExpansionFrom(tree, item, true);
+                }
+            });
+            connect(tree, &QTreeWidget::itemCollapsed, this, [this, tree](QTreeWidgetItem* item)
+            {
+                if (!mSyncingPanes)
+                {
+                    syncExpansionFrom(tree, item, false);
+                }
+            });
         }
-        connect(mUi->leftTree, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem*, QTreeWidgetItem*)
+
+        QSplitter* splitter = mUi->panesSplitter;
+        splitter->setStretchFactor(0, 1);
+        splitter->setStretchFactor(1, 1);
+    }
+
+    void SyncPreviewPairDetailDialog::buildActionPanel()
+    {
+        // The decide/approve panel under the trees (MEGA-2.8 verdict: the
+        // meld-true panes have no middle strip; the selected row's actions
+        // are pressable buttons arranged on labeled lines here). Styled by
+        // applyPanesPalette under the syncPreviewActionPanel objectName.
+        mActionPanel = new QFrame(this);
+        mActionPanel->setObjectName(QLatin1String("syncPreviewActionPanel"));
+        mActionPanel->setFrameShape(QFrame::NoFrame);
+        mActionPanel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+
+        mPanelPathLabel = new QLabel(mActionPanel);
+        QFont boldFont = mPanelPathLabel->font();
+        boldFont.setBold(true);
+        mPanelPathLabel->setFont(boldFont);
+        mPanelPathLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+        mPanelStatesLabel = new QLabel(mActionPanel);
+        mPanelStatesLabel->setTextFormat(Qt::RichText);
+
+        // One pressable button per action, exclusive: the pressed button is
+        // the row's effective action; the recommendation is a side hint.
+        mActionGroup = new QButtonGroup(mActionPanel);
+        mActionGroup->setExclusive(true);
+        for (const Action choice : actionChoices())
         {
-            if (!mSyncingPanes)
+            auto* button = new QPushButton(actionButtonText(choice), mActionPanel);
+            button->setCheckable(true);
+            // Prod widget design: the app's themed components are keyed on
+            // the type="mega" property (same convention as MEGA-2.7's rows).
+            button->setProperty("type", QLatin1String("mega"));
+            mActionGroup->addButton(button);
+            mActionButtons.push_back(button);
+            connect(button, &QPushButton::clicked, this, [this, choice](bool checked)
             {
-                syncSelectionFrom(mUi->leftTree);
+                if (!checked || mSelectedPath.isEmpty())
+                {
+                    // Unchecking happens programmatically when another
+                    // button takes over; only a real pick decides.
+                    return;
+                }
+                const Row* row = mRowsByPath.value(mSelectedPath);
+                const Plan plan = mController->plan(mPairId);
+                const RowPlan* rowPlan = plan.find(mSelectedPath);
+                const Action effective = rowPlan ? rowPlan->action : (row ? row->recommendedAction : Action::None);
+                if (choice == effective)
+                {
+                    return; // re-click on the active action: no-op
+                }
+                onRowActionSelected(mSelectedPath, choice);
+            });
+        }
+
+        mApproveButton = new QPushButton(tr("Approve"), mActionPanel);
+        mApproveButton->setCheckable(true);
+        mApproveButton->setProperty("type", QLatin1String("mega"));
+        connect(mApproveButton, &QPushButton::clicked, this, [this](bool checked)
+        {
+            if (!mSelectedPath.isEmpty())
+            {
+                onRowApprovalToggled(mSelectedPath, checked);
             }
         });
-        connect(mUi->rightTree, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem*, QTreeWidgetItem*)
+
+        mPanelHintLabel = new QLabel(mActionPanel);
+
+        mPanelNotesLabel = new QLabel(mActionPanel);
+        mPanelNotesLabel->setWordWrap(true);
+
+        auto* headerRow = new QHBoxLayout;
+        headerRow->addWidget(mPanelPathLabel, 1);
+        headerRow->addWidget(mPanelStatesLabel);
+
+        auto* decisionsRow = new QHBoxLayout;
+        decisionsRow->setSpacing(6);
+        for (QPushButton* button : mActionButtons)
         {
-            if (!mSyncingPanes)
-            {
-                syncSelectionFrom(mUi->rightTree);
-            }
-        });
+            decisionsRow->addWidget(button);
+        }
+        decisionsRow->addWidget(mApproveButton);
+        decisionsRow->addStretch(1);
+        decisionsRow->addWidget(mPanelHintLabel);
+
+        auto* panelLayout = new QVBoxLayout(mActionPanel);
+        panelLayout->setContentsMargins(8, 6, 8, 6);
+        panelLayout->setSpacing(4);
+        panelLayout->addLayout(headerRow);
+        panelLayout->addLayout(decisionsRow);
+        panelLayout->addWidget(mPanelNotesLabel);
+
+        // Between the panes and the footer, taking only its natural height.
+        auto* mainLayout = qobject_cast<QVBoxLayout*>(layout());
+        Q_ASSERT(mainLayout);
+        mainLayout->insertWidget(mainLayout->indexOf(mUi->panesSplitter) + 1, mActionPanel);
     }
 
     void SyncPreviewPairDetailDialog::applyPanesPalette()
     {
-        // Theme tokens instead of ad-hoc greys: rows and alternating bands
-        // use the app's surface colors, selection uses the app's inverse
-        // accent, so both color schemas keep sufficient contrast.
+        // Theme tokens instead of ad-hoc greys: the whole window sits on the
+        // page background (a lighter default surface read as a grey band
+        // above the panes), trees and their column headers use the same
+        // background, selection uses the app's inverse accent, and the
+        // action panel is a quiet surface card — so both color schemas keep
+        // a calm, uniform dark/light read.
         auto theme = TokenParserWidgetManager::instance();
-        for (QTreeWidget* tree : {mUi->leftTree, mUi->midTree, mUi->rightTree})
+        const QColor surface1 = theme->getColor(QLatin1String("surface-1"));
+        const QColor borderStrong = theme->getColor(QLatin1String("border-strong"));
+
+        GuiStyle::applyWindowPalette(this);
+
+        for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
         {
-            QPalette palette = tree->palette();
-            palette.setColor(QPalette::Base, theme->getColor(QLatin1String("page-background")));
-            palette.setColor(QPalette::AlternateBase, theme->getColor(QLatin1String("surface-1")));
-            palette.setColor(QPalette::Text, theme->getColor(QLatin1String("text-primary")));
-            palette.setColor(QPalette::WindowText, theme->getColor(QLatin1String("text-primary")));
-            palette.setColor(QPalette::Highlight, theme->getColor(QLatin1String("surface-inverse-accent")));
-            palette.setColor(QPalette::HighlightedText, theme->getColor(QLatin1String("text-inverse-accent")));
-            tree->setPalette(palette);
+            GuiStyle::applyViewPalette(tree);
+        }
+
+        if (mActionPanel)
+        {
+            // The decide/approve panel: one quiet surface card, no frames.
+            mActionPanel->setStyleSheet(QStringLiteral(
+                "QFrame#syncPreviewActionPanel {"
+                " background: %1;"
+                " border: 1px solid %2;"
+                " border-radius: 6px;"
+                " }")
+                .arg(surface1.name(), borderStrong.name()));
+
+            for (QPushButton* button : mActionButtons)
+            {
+                button->setStyleSheet(GuiStyle::actionButtonStyleSheet());
+            }
+            mApproveButton->setStyleSheet(GuiStyle::approveButtonStyleSheet());
         }
     }
 
@@ -434,15 +530,13 @@ namespace SyncPreview
         }
 
         repopulate();
+        updateActionPanel();
         updateSummary();
     }
 
     void SyncPreviewPairDetailDialog::repopulate()
     {
         const Classification& classification = mController->classification(mPairId);
-        const QHash<QString, RowDecision> decisions = decisionsFor();
-        const QStringList reFlagged = mController->reFlaggedPaths(mPairId);
-        const Plan plan = mController->plan(mPairId);
 
         const QString filter = mUi->pathFilterEdit->text();
         // Meld-style state filters (MEGA-2.8 AC#3): Same hidden by default.
@@ -450,77 +544,99 @@ namespace SyncPreview
         const bool showDifferent = mUi->differentFilterCheck->isChecked();
         const bool showNew = mUi->newFilterCheck->isChecked();
 
-        auto theme = TokenParserWidgetManager::instance();
-        const QColor primaryColor = theme->getColor(QLatin1String("text-primary"));
+        // Path-keyed row index and parent→children grouping for the tree
+        // walk; the classification holds every path (folders included) with
+        // its own row, so the tree and the rows agree one to one.
+        mRowsByPath.clear();
+        QHash<QString, QVector<const Row*>> childrenOf;
+        for (const Row& row : classification.rows)
+        {
+            mRowsByPath.insert(row.relativePath, &row);
+            childrenOf[parentPath(row.relativePath)].push_back(&row);
+        }
+        for (auto it = childrenOf.begin(); it != childrenOf.end(); ++it)
+        {
+            std::sort(it->begin(), it->end(),
+                [](const Row* a, const Row* b)
+                {
+                    return baseNameOf(a->relativePath).compare(baseNameOf(b->relativePath),
+                               Qt::CaseInsensitive) < 0;
+                });
+        }
+
+        // Row visibility: path filter + state bucket; a row the state
+        // filters would hide still shows as a structural ancestor when
+        // visible descendants hang under it (meld keeps such folders on
+        // screen so the tree stays connected).
+        QSet<QString> visiblePaths;
+        for (const Row& row : classification.rows)
+        {
+            if (rowVisible(row, filter) && visibleUnderFilters(row, showSame, showDifferent, showNew))
+            {
+                for (QString path = row.relativePath; !path.isEmpty(); path = parentPath(path))
+                {
+                    if (visiblePaths.contains(path))
+                    {
+                        break; // this ancestor chain is already marked
+                    }
+                    visiblePaths.insert(path);
+                }
+            }
+        }
 
         QTreeWidget* leftTree = mUi->leftTree;
-        QTreeWidget* midTree = mUi->midTree;
         QTreeWidget* rightTree = mUi->rightTree;
 
         const int scrollPosition = leftTree->verticalScrollBar()->value();
         leftTree->clear();
-        midTree->clear();
         rightTree->clear();
-
-        static const RowPlan emptyPlan;
+        mLeftItems.clear();
+        mRightItems.clear();
 
         int displayed = 0;
-        int remaining = 0;
+        mSyncingPanes = true;
 
-        for (const Row& row : classification.rows)
+        // One depth-first walk builds both panes in lock-step: same paths,
+        // same order, expansion state preserved across rebuilds.
+        std::function<void(QTreeWidgetItem*, QTreeWidgetItem*, const QString&)> addLevel =
+            [&](QTreeWidgetItem* leftParent, QTreeWidgetItem* rightParent, const QString& parentKey)
         {
-            if (!rowVisible(row, filter) ||
-                !visibleUnderFilters(row, showSame, showDifferent, showNew))
+            const auto siblings = childrenOf.constFind(parentKey);
+            if (siblings == childrenOf.constEnd())
             {
-                continue;
+                return;
             }
-
-            if (displayed >= mShownCount)
+            for (const Row* row : siblings.value())
             {
-                ++remaining;
-                continue;
+                if (!visiblePaths.contains(row->relativePath))
+                {
+                    continue;
+                }
+                if (displayed >= mShownCount)
+                {
+                    continue; // counted as remaining below
+                }
+                QTreeWidgetItem* leftItem = makeSideItem(leftTree, leftParent, *row, true);
+                QTreeWidgetItem* rightItem = makeSideItem(rightTree, rightParent, *row, false);
+                mLeftItems.insert(row->relativePath, leftItem);
+                mRightItems.insert(row->relativePath, rightItem);
+                ++displayed;
+                addLevel(leftItem, rightItem, row->relativePath);
             }
+        };
+        addLevel(nullptr, nullptr, QString());
 
-            const RowPlan* rowPlan = plan.find(row.relativePath);
-            const bool reFlaggedRow = reFlagged.contains(row.relativePath);
-
-            const QString indent = GuiText::indentFor(row.relativePath);
-            const QString newer = newerSuffix(row);
-
-            // Per-side meld states (MEGA-2.8 AC#1): one row reads New on the
-            // side that holds the entry and Missing on the other, blockers
-            // read Blocked on both. The state explains the row; the conflict
-            // and blocker details live in the tooltips, the re-approve
-            // warning rides the action strip's label.
-            const PaneRender localRender = renderSide(row, true, indent, newer);
-            const PaneRender remoteRender = renderSide(row, false, indent, newer);
-
-            const QString tooltip = rowTooltip(row);
-
-            addSideRow(leftTree, localRender, GuiText::sizeText(row.local),
-                       GuiText::timeText(row.local), tooltip, theme.get());
-            addSideRow(rightTree, remoteRender, GuiText::sizeText(row.remote),
-                       GuiText::timeText(row.remote), tooltip, theme.get());
-
-            // The action strip row: same index as both panes.
-            auto* midItem = new QTreeWidgetItem();
-            midItem->setSizeHint(0, QSize(kMidWidth, kRowHeight));
-            midItem->setForeground(0, QBrush(primaryColor));
-            midTree->addTopLevelItem(midItem);
-            midTree->setItemWidget(midItem, 0,
-                                   buildRowWidget(row, rowPlan ? *rowPlan : emptyPlan,
-                                                  decisions.value(row.relativePath).approved,
-                                                  reFlaggedRow, midTree));
-
-            ++displayed;
-        }
-
+        // Load-more cap (MEGA-2.7): visible rows beyond the cap collapse
+        // into a button row appended under BOTH panes, keeping the panes
+        // line-locked.
+        const int remaining = visiblePaths.size() - displayed;
         if (remaining > 0)
         {
             QTreeWidgetItem* leftItem = loadMoreItem(remaining);
             leftTree->addTopLevelItem(leftItem);
             leftTree->setFirstItemColumnSpanned(leftItem, true);
-            auto* loadMoreButton = new QPushButton(tr("Load more (%1 remaining)").arg(remaining), leftTree);
+            auto* loadMoreButton =
+                new QPushButton(tr("Load more (%1 remaining)").arg(remaining), leftTree);
             connect(loadMoreButton, &QPushButton::clicked, this, [this]()
             {
                 mShownCount += kRowCap;
@@ -528,14 +644,97 @@ namespace SyncPreview
             });
             leftTree->setItemWidget(leftItem, kColPath, loadMoreButton);
 
-            PaneRender loadMoreRender;
-            loadMoreRender.pathText = tr("Load more (%1 remaining)").arg(remaining);
-            addSideRow(midTree, loadMoreRender, QString(), QString(), QString(), theme.get());
-            addSideRow(rightTree, loadMoreRender, QString(), QString(), QString(), theme.get());
+            QTreeWidgetItem* rightItem = loadMoreItem(remaining);
+            rightTree->addTopLevelItem(rightItem);
+        }
+        mSyncingPanes = false;
+
+        // Restore selection and scroll position across both panes.
+        if (!mSelectedPath.isEmpty())
+        {
+            const auto leftIt = mLeftItems.constFind(mSelectedPath);
+            const auto rightIt = mRightItems.constFind(mSelectedPath);
+            if (leftIt != mLeftItems.constEnd() && rightIt != mRightItems.constEnd())
+            {
+                mUi->leftTree->setCurrentItem(leftIt.value());
+                mUi->rightTree->setCurrentItem(rightIt.value());
+            }
+            else
+            {
+                // The selected row was filtered away; the panel resets.
+                mSelectedPath.clear();
+            }
+        }
+        leftTree->verticalScrollBar()->setValue(scrollPosition);
+    }
+
+    QTreeWidgetItem* SyncPreviewPairDetailDialog::makeSideItem(QTreeWidget* tree,
+                                                               QTreeWidgetItem* parent,
+                                                               const Row& row,
+                                                               bool localSide)
+    {
+        const std::optional<Entry>& side = localSide ? row.local : row.remote;
+        const PaneState state = stateFor(row, side);
+
+        auto* item = parent ? new QTreeWidgetItem(parent) : new QTreeWidgetItem(tree);
+        item->setData(kColPath, Qt::UserRole, row.relativePath);
+        item->setSizeHint(kColPath, QSize(0, kRowHeight));
+
+        // Each pane spells the entry as its own side holds it (the two
+        // spellings of a case-collision blocker differ); a missing side
+        // keeps the canonical spelling, struck through.
+        const QString name = side ? baseNameOf(side->relativePath) : baseNameOf(row.relativePath);
+        item->setText(kColPath, name);
+        item->setText(kColSize, GuiText::sizeText(side));
+        item->setText(kColModified, GuiText::timeText(side));
+
+        const QString tooltip = rowTooltip(row);
+        if (!tooltip.isEmpty())
+        {
+            item->setToolTip(kColPath, tooltip);
         }
 
-        // Restore the scroll position across all panes.
-        leftTree->verticalScrollBar()->setValue(scrollPosition);
+        const QColor color = stateColor(state, TokenParserWidgetManager::instance().get());
+        for (int column = 0; column < tree->columnCount(); ++column)
+        {
+            item->setForeground(column, QBrush(color));
+        }
+        item->setFont(kColPath, stateFont(state, tree->font()));
+
+        // Icons on BOTH panes, including a missing side: the row's entry
+        // type (whichever side holds it) is what the other side would sync,
+        // so both panes read as mirrored file trees — a local-only folder
+        // shows as a struck folder name on the remote side, not as a blank.
+        bool isFolder = false;
+        if (side)
+        {
+            isFolder = side->isFolder();
+        }
+        else if (row.local)
+        {
+            isFolder = row.local->isFolder();
+        }
+        else if (row.remote)
+        {
+            isFolder = row.remote->isFolder();
+        }
+        if (isFolder)
+        {
+            QIcon icon;
+            icon.addFile(QStringLiteral(":/") + kFolderIcon);
+            icon.addFile(QStringLiteral(":/") + kFolderIcon2x);
+            item->setIcon(kColPath, icon);
+        }
+        else if (side)
+        {
+            item->setIcon(kColPath, QIcon(QStringLiteral(":/") + kFileIcon));
+        }
+
+        if (side && side->isFolder())
+        {
+            item->setExpanded(mExpandedByPath.value(row.relativePath, true));
+        }
+        return item;
     }
 
     void SyncPreviewPairDetailDialog::syncScrollFrom(QScrollBar* source)
@@ -547,7 +746,7 @@ namespace SyncPreview
 
         mSyncingPanes = true;
         const int value = source->value();
-        for (QTreeWidget* tree : {mUi->leftTree, mUi->midTree, mUi->rightTree})
+        for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
         {
             if (tree->verticalScrollBar() != source)
             {
@@ -560,19 +759,54 @@ namespace SyncPreview
     void SyncPreviewPairDetailDialog::syncSelectionFrom(QTreeWidget* source)
     {
         QTreeWidgetItem* current = source->currentItem();
-        if (!current)
-        {
-            return;
-        }
+        mSelectedPath = current ? current->data(kColPath, Qt::UserRole).toString() : QString();
 
         mSyncingPanes = true;
-        const int row = source->indexOfTopLevelItem(current);
-        for (QTreeWidget* tree : {mUi->leftTree, mUi->midTree, mUi->rightTree})
+        for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
         {
             if (tree != source)
             {
+                QTreeWidgetItem* mirror = nullptr;
+                if (!mSelectedPath.isEmpty())
+                {
+                    const auto& items = (tree == mUi->leftTree) ? mLeftItems : mRightItems;
+                    const auto it = items.constFind(mSelectedPath);
+                    if (it != items.constEnd())
+                    {
+                        mirror = it.value();
+                    }
+                }
                 const QSignalBlocker blocker(tree);
-                tree->setCurrentItem(tree->topLevelItem(row));
+                tree->setCurrentItem(mirror);
+            }
+        }
+        mSyncingPanes = false;
+
+        updateActionPanel();
+    }
+
+    void SyncPreviewPairDetailDialog::syncExpansionFrom(QTreeWidget* source,
+                                                        QTreeWidgetItem* item,
+                                                        bool expanded)
+    {
+        const QString path = item->data(kColPath, Qt::UserRole).toString();
+        if (path.isEmpty())
+        {
+            return;
+        }
+        mExpandedByPath.insert(path, expanded);
+
+        mSyncingPanes = true;
+        for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
+        {
+            if (tree != source)
+            {
+                const auto& items = (tree == mUi->leftTree) ? mLeftItems : mRightItems;
+                const auto it = items.constFind(path);
+                if (it != items.constEnd())
+                {
+                    it.value()->setExpanded(expanded);
+                }
             }
         }
         mSyncingPanes = false;
@@ -595,8 +829,6 @@ namespace SyncPreview
         }
         if (row.kind == RowKind::Conflict)
         {
-            // Was the badge text (MEGA-2.7); the meld rework spells the
-            // state in the status column and keeps the detail here.
             notes << tr("Same content, different name — needs approval");
         }
         if (row.underBlockedPath)
@@ -611,24 +843,6 @@ namespace SyncPreview
             notes << tr("Not resolvable by a transfer: needs rename/exclusion (later stage)");
         }
         return notes.join(QLatin1Char('\n'));
-    }
-
-    QWidget* SyncPreviewPairDetailDialog::buildRowWidget(const Row& row,
-                                                         const RowPlan& rowPlan,
-                                                         bool approved,
-                                                         bool reFlagged,
-                                                         QWidget* parent)
-    {
-        auto* rowWidget = new SyncPreviewRowWidget(row, rowPlan, approved, reFlagged, parent);
-        connect(rowWidget,
-                &SyncPreviewRowWidget::actionSelected,
-                this,
-                &SyncPreviewPairDetailDialog::onRowActionSelected);
-        connect(rowWidget,
-                &SyncPreviewRowWidget::approvalToggled,
-                this,
-                &SyncPreviewPairDetailDialog::onRowApprovalToggled);
-        return rowWidget;
     }
 
     bool SyncPreviewPairDetailDialog::rowVisible(const Row& row, const QString& filter) const
@@ -651,6 +865,104 @@ namespace SyncPreview
             }
         }
         return decisions;
+    }
+
+    void SyncPreviewPairDetailDialog::updateActionPanel()
+    {
+        auto theme = TokenParserWidgetManager::instance();
+        const Row* row = mRowsByPath.value(mSelectedPath);
+        if (!row)
+        {
+            mPanelPathLabel->setText(tr("Select a row to decide"));
+            mPanelPathLabel->setToolTip(QString());
+            mPanelStatesLabel->clear();
+            for (QPushButton* button : mActionButtons)
+            {
+                const QSignalBlocker blocker(button);
+                button->setChecked(false);
+                button->setEnabled(false);
+            }
+            mApproveButton->setVisible(false);
+            mPanelHintLabel->clear();
+            mPanelNotesLabel->clear();
+            mPanelNotesLabel->setVisible(false);
+            return;
+        }
+
+        mPanelPathLabel->setText(row->relativePath);
+        mPanelPathLabel->setToolTip(row->relativePath);
+
+        // The two panes' states, spelled out with their state colors.
+        const PaneState localState = stateFor(*row, row->local);
+        const PaneState remoteState = stateFor(*row, row->remote);
+        mPanelStatesLabel->setText(QStringLiteral(
+            "<span style=\"color:%2;\">local: %1</span> · <span style=\"color:%4;\">remote: %3</span>")
+            .arg(stateText(localState), stateColor(localState, theme.get()).name(),
+                 stateText(remoteState), stateColor(remoteState, theme.get()).name()));
+
+        // The effective action (decisions already folded in by the planner)
+        // is the pressed button; the recommendation is a side hint.
+        const Plan plan = mController->plan(mPairId);
+        const RowPlan* rowPlan = plan.find(row->relativePath);
+        const Action effective = rowPlan ? rowPlan->action : row->recommendedAction;
+        const QVector<Action>& choices = actionChoices();
+        // Blocker rows cannot transfer (a transfer would stall on them):
+        // only "Do nothing" stays clickable there, with the rename/exclusion
+        // resolution spelled out in the notes. Transfer buttons stay visible
+        // but disabled — readable, with the later-stage explanation.
+        const bool transferable = row->kind != RowKind::Blocker;
+        for (int i = 0; i < mActionButtons.size() && i < choices.size(); ++i)
+        {
+            const QSignalBlocker blocker(mActionButtons[i]);
+            const Action choice = choices.at(i);
+            mActionButtons[i]->setEnabled(transferable || choice == Action::None);
+            mActionButtons[i]->setChecked(choice == effective);
+            QString tip = actionTooltip(choice);
+            if (choice == row->recommendedAction)
+            {
+                tip += QStringLiteral(" — ") + tr("recommended");
+            }
+            if (!transferable && choice != Action::None)
+            {
+                tip += QStringLiteral(" — ") + tr("arrives in a later stage");
+            }
+            mActionButtons[i]->setToolTip(tip);
+        }
+        mPanelHintLabel->setText(tr("Recommended: %1").arg(actionName(row->recommendedAction)));
+        mPanelHintLabel->setStyleSheet(
+            QStringLiteral("QLabel { color: %1; }")
+                .arg(theme->getColor(QLatin1String("text-secondary")).name()));
+
+        // Approval only on rows the classifier flagged for it, and only when
+        // something actually transfers: approving a "do nothing" row is a
+        // no-op and would just read as noise.
+        const QHash<QString, RowDecision> decisions = decisionsFor();
+        mApproveButton->setVisible(row->requiresApproval && effective != Action::None);
+        {
+            const QSignalBlocker blocker(mApproveButton);
+            mApproveButton->setEnabled(row->kind != RowKind::Blocker || row->requiresApproval);
+            mApproveButton->setChecked(decisions.value(row->relativePath).approved);
+        }
+
+        // Notes: conflict/blocker reasons, twin, blocked path, re-flag.
+        QStringList notes;
+        const QStringList reFlagged = mController->reFlaggedPaths(mPairId);
+        if (reFlagged.contains(row->relativePath))
+        {
+            notes << tr("classification changed — re-approve");
+        }
+        const QString tooltipNotes = rowTooltip(*row);
+        if (!tooltipNotes.isEmpty())
+        {
+            notes << tooltipNotes;
+        }
+        const bool severe = row->kind == RowKind::Blocker || row->kind == RowKind::Conflict ||
+            row->underBlockedPath;
+        mPanelNotesLabel->setText(notes.join(QStringLiteral("  ·  ")));
+        mPanelNotesLabel->setStyleSheet(
+            QStringLiteral("QLabel { color: %1; }")
+                .arg(theme->getColor(QLatin1String(severe ? "text-error" : "text-warning")).name()));
+        mPanelNotesLabel->setVisible(!notes.isEmpty());
     }
 
     void SyncPreviewPairDetailDialog::updateSummary()

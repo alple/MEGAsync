@@ -63,6 +63,11 @@ namespace SyncPreview
         // `count` local-only files (plus one remote-only file) in the root:
         // a long visible list exercising the row cap and load-more.
         FakeScenario manyLocalOnlyFiles(int count);
+
+        // The rename-swap trap: remote renamed foo.txt to bar.txt (old
+        // content under the new name) while local edited foo.txt. Presents
+        // the transfer-overwrites-sibling-content edge case.
+        FakeScenario renameSwap();
     }
 }
 

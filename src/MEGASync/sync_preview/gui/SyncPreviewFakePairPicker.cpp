@@ -13,6 +13,7 @@ namespace SyncPreview
         const QLatin1String kitchenSinkLabel("Demo: kitchen sink (all edge cases)");
         const QLatin1String longListLabel("Demo: long list (600 rows, load-more)");
         const QLatin1String emptyPairLabel("Demo: empty pair (no differences)");
+        const QLatin1String renameSwapLabel("Demo: rename swap (content moved to a new name)");
         constexpr int longListRows = 600;
     }
 
@@ -55,6 +56,7 @@ namespace SyncPreview
     QStringList SyncPreviewFakePairPicker::scenarioLabels()
     {
         return {QString(kitchenSinkLabel),
+                QString(renameSwapLabel),
                 QString(longListLabel),
                 QString(emptyPairLabel)};
     }
@@ -64,6 +66,10 @@ namespace SyncPreview
         if (label == kitchenSinkLabel)
         {
             return FakeScenarios::edgeCaseKitchenSink();
+        }
+        if (label == renameSwapLabel)
+        {
+            return FakeScenarios::renameSwap();
         }
         if (label == longListLabel)
         {

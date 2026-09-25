@@ -7,9 +7,14 @@
 
 #include <QDialog>
 #include <QHash>
+#include <QVector>
 
 #include <memory>
 
+class QButtonGroup;
+class QFrame;
+class QLabel;
+class QPushButton;
 class QScrollBar;
 class QTreeWidget;
 class QTreeWidgetItem;
@@ -23,16 +28,15 @@ namespace SyncPreview
 {
     class PairController;
 
-    // MC-style dual-pane review window for ONE queued pair (MEGA-2.7): a
-    // local tree pane on the left, a remote tree pane on the right, and the
-    // action choice on a fixed strip BETWEEN the panes. The panes are
-    // row-locked: every classified path is one row on all three views (a
-    // side that misses the entry shows an empty pane cell), scrolling and
-    // selection move all panes together, like Midnight Commander. Each pane
-    // reads its own side with meld's folder-diff states (MEGA-2.8): Same /
-    // Modified / New / Missing / Blocked, colored per SIDE so one row can
-    // read New on the left and Missing on the right, with Same/Different/New
-    // state filters (Same hidden by default, blockers always visible).
+    // Meld-style folder-diff review window for ONE queued pair (MEGA-2.8):
+    // a local tree on the left, a remote tree on the right, both expandable
+    // and row-locked — expansion, selection and scrolling move together by
+    // path, like meld's folder comparison. Each pane reads its own side with
+    // meld's states — Same / Modified / New / Missing / Blocked — colored
+    // per SIDE, so one row can read New on the left and Missing on the
+    // right; state filters (Same hidden by default, blockers always shown)
+    // sit above the panes. There is no middle strip: the selected row's
+    // action buttons and approval toggle live in a panel UNDER the trees.
     // Opened from the pair-first list; non-modal so several pairs can be
     // reviewed side by side. Shares the pair list's PairController: decisions
     // made here are persisted and re-verified exactly as before. The window
@@ -56,16 +60,23 @@ namespace SyncPreview
 
     private:
         void setupPanes();
+        void buildActionPanel();
         void applyPanesPalette();
         void repopulate();
-        // Keeps the panes aligned: same row index on every view.
+        void updateActionPanel();
+        // Keeps the panes aligned: same path expanded, selected, scrolled.
         void syncScrollFrom(QScrollBar* source);
         void syncSelectionFrom(QTreeWidget* source);
-        QWidget* buildRowWidget(const Row& row,
-                                const RowPlan& rowPlan,
-                                bool approved,
-                                bool reFlagged,
-                                QWidget* parent);
+        void syncExpansionFrom(QTreeWidget* source, QTreeWidgetItem* item, bool expanded);
+        void addSubtree(QTreeWidget* leftTree,
+                        QTreeWidget* rightTree,
+                        QTreeWidgetItem* leftParent,
+                        QTreeWidgetItem* rightParent,
+                        const QString& parentKey);
+        QTreeWidgetItem* makeSideItem(QTreeWidget* tree,
+                                      QTreeWidgetItem* parent,
+                                      const Row& row,
+                                      bool localSide);
         QTreeWidgetItem* loadMoreItem(int remaining);
         QString rowTooltip(const Row& row) const;
         bool rowVisible(const Row& row, const QString& filter) const;
@@ -75,8 +86,31 @@ namespace SyncPreview
         const QString mPairId;
         PairController* mController = nullptr;
         std::unique_ptr<Ui::SyncPreviewPairDetailDialog> mUi;
-        int mShownCount = 0;
+
+        // Rows of the current classification keyed by path (repopulation
+        // scope); the tree views hold no decisions themselves.
+        QHash<QString, const Row*> mRowsByPath;
+        // Tree items of the current population keyed by path, per pane —
+        // what keeps expansion/selection/scrolling in path lock-step.
+        QHash<QString, QTreeWidgetItem*> mLeftItems;
+        QHash<QString, QTreeWidgetItem*> mRightItems;
+        // Expansion survives repopulation (filter edits, decisions, themes).
+        QHash<QString, bool> mExpandedByPath;
+        // The path whose row the action panel shows; empty = no selection.
+        QString mSelectedPath;
         bool mSyncingPanes = false;
+
+        // The action panel under the trees (pressable buttons, no combo).
+        QFrame* mActionPanel = nullptr;
+        QLabel* mPanelPathLabel = nullptr;
+        QLabel* mPanelStatesLabel = nullptr;
+        QVector<QPushButton*> mActionButtons;
+        QButtonGroup* mActionGroup = nullptr;
+        QPushButton* mApproveButton = nullptr;
+        QLabel* mPanelHintLabel = nullptr;
+        QLabel* mPanelNotesLabel = nullptr;
+
+        int mShownCount = 0;
     };
 }
 #endif // SYNCPREVIEWPAIRDETAILDIALOG_H

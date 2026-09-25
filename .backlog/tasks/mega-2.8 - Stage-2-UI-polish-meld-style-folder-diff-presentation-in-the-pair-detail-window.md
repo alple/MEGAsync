@@ -7,7 +7,7 @@ status: Testing
 assignee:
   - agent
 created_date: '2026-09-24 18:49'
-updated_date: '2026-09-24 19:23'
+updated_date: '2026-09-25 16:10'
 labels:
   - sync-preview
 milestone: Sync pre-commit review
@@ -47,6 +47,15 @@ Follow-up from MEGA-2.7 Testing feedback (2026-09-24): the two-pane detail windo
 - [ ] #6 just build compiles clean and just test stays green
 <!-- AC:END -->
 
+## Comments
+
+<!-- COMMENTS:BEGIN -->
+created: 2026-09-24 19:55
+---
+Testing rejection (2026-09-24): per-side recolor of the MC 3-pane layout "ain't it" — the meld-true target is the actual meld folder-diff anatomy (two row-locked expandable trees + thin state-bars column, actions out of the middle). Direction re-decided with the dev: meld-true layout, actions move to a bottom panel (vs drawer/context-menu alternatives), real expandable trees with synced expansion. Research verdict recorded: no C++ folder-diff view exists that this proprietary fork can lift (KDiff3/WinMerge/FreeFileSync/Kompare/meld are all GPL; SDK exposes no tree diff) — the look must be our own code, behavior-porting only. A throwaway Qt prototype with three layout variants (A bars+bottom panel, B bars+side drawer, C no-bars color-only) on the real fake-data engine is at /tmp/kilo/meld-proto (run.sh); variant pick will drive the real dialog rework. Ticket stays Testing until the layout verdict lands.
+---
+<!-- COMMENTS:END -->
+
 ## Final Summary
 
 <!-- SECTION:FINAL_SUMMARY:BEGIN -->
@@ -70,4 +79,18 @@ Notes for Testing (human eyes needed):
 - Pre-existing `setFirstItemColumnSpanned` deprecation warning (from MEGA-2.7's load-more row) left as-is — not this ticket's churn.
 
 Note: MEGA-2.7's baseline was committed as 534ec2c mid-session (not by this session); this diff sits cleanly on top of it, uncommitted as agreed.
+
+REWORK per Testing verdict (2026-09-25, prototype variant C chosen): the pair detail window is now meld-true. The 380px middle action strip is GONE — two expandable QTreeWidgets only (left local, right remote), row-locked by PATH: expansion, selection and scrolling sync across panes by path key (not row index), so the trees stay aligned like meld's folder comparison. Rows are real hierarchy (QTreeWidget nesting, no more space-indent hacks) at a meld-dense 26px, folders default-expanded with expansion state surviving rebuilds. Status column dropped (color-only states, per variant C): per-pane state colors/fonts identical to the previous iteration (Same dimmed / Modified blue bold / New green bold / Missing struck / Blocked red both panes). AC#2's status column is superseded by the verdict — state now reads via color+font and the action panel's per-side state line.
+
+Actions moved to a bottom panel under the trees (built in-code, QFrame): line 1 = selected path (bold) + per-side states in state colors; line 2 = four pressable exclusive action buttons [L→R] [R→L] [Best-effort] [Do nothing] + Approve toggle + right-aligned 'Recommended: X' hint; line 3 = notes (re-approve / conflict / blocker / twin) in warning/error token color. Effective action (planner-decided) is the pressed button; blockers disable the action buttons; re-click on the active action is a no-op (no consequences-popup spam). SyncPreviewRowWidget retired (deleted; its only consumer was the mid strip) — syncpreview.cmake updated, translations regenerated. Nothing else consumes it.
+
+Tree population: classification rows grouped by parentPath (every folder path has a row — verified in the classifier), sorted case-insensitive per level; state-filtered rows hidden unless they have visible descendants (structural ancestors keep their true state colors so the tree stays connected); path filter unchanged; load-more cap preserved (button row appended under BOTH panes, line-locked); expansion state kept across rebuilds in a path→expanded map. Selection by path restores across filter edits; filtered-away selection resets the panel. Consequences popup flow, commit gating, multi-pair add/remove, theming rebuild on theme change, non-modal windows all preserved. No model/controller changes (classifier's folder subtree verdicts drive directory states). Build clean, just test green (646/108). RowWidget's stale .ts context dropped by the generate_ts run.
+
+For Testing: (1) expand/collapse a folder on ONE side — the sibling pane must mirror it (meld behavior); (2) folder states: a folder containing any change reads Modified (classifier subtree verdict), untouched folders read Same and are hidden unless Same is checked; (3) the action panel on a selected directory row still routes through the consequences popup (cancel must restore); (4) button arrangement — the panel is two labeled lines (path+states, buttons+approve+hint) — react to the arrangement; (5) Same-filter structural ancestors render in their real state color — check they don't distract; (6) icon dark-theme aliasing check still pending from the previous round.
+
+FEEDBACK ROUND 2 fixes (2026-09-25): (1) Taskbar/window icon — both review windows set the MEGA app icon (:/images/app_ico.ico) explicitly; the app-level icon doesn't reliably reach these non-modal windows under Wayland. (2) Selection read glaringly bright (surface-inverse-accent fill) — both windows' views now select with the translucent neutral-container-hover token + text-primary, a quiet grey-on-dark highlight. (3) Blocker rows used to disable ALL action buttons incl. Do nothing (unreadable grey + approvable no-op) — 'Do nothing' is now always clickable (it IS the no-op state), only the transfer buttons stay disabled-but-readable with 'arrives in a later stage' tooltips, and the Approve toggle is hidden when the effective action is None (approving a do-nothing was meaningless; engine gating reconciliation moved to MEGA-2.9). (4) Action buttons labeled 'L→R'/'R→L' re-read as confusing word pairs — button faces are now '→' and '←' (left pane stays left, right pane right, only the arrow flips), with descriptive tooltips (Transfer local → remote etc.) and the recommendation hint spelled in prose ('Recommended: local → remote').
+
+Fake data: kitchen sink gained a 4-level nested branch (projects/mega/client/src) with identical top and a CRC-only modification at the bottom so folder paths read Modified down a real hierarchy. New canned scenario 'renameSwap' pins the moved-content trap the user called out (local foo.txt@hash_1 | remote foo.txt@hash_2 + remote bar.txt@hash_1 — naive L→R would overwrite content the remote already keeps under bar.txt); pickable in the pair picker as 'Demo: rename swap (content moved to a new name)' and pinned by a new unit test (652 assertions / 109 cases).
+
+Moved OUT of this ticket into new MEGA-2.9 (Backlog, depends on this): rename-aware transfer semantics for conflict/blocker rows, approval-gating reconciliation in the engine, twin detection for PAIRED rows (rename-swap resolution), the Show-changes/Apply review loop on fake data, and further scenario fishing — per the user's own call that this exceeds the current ticket's context.
 <!-- SECTION:FINAL_SUMMARY:END -->

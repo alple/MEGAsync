@@ -13,7 +13,6 @@ set(DESKTOP_APP_SYNC_PREVIEW_HEADERS
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewDialog.h
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewPairDetailDialog.h
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewGuiFormat.h
-    ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewRowWidget.h
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewConsequencesDialog.h
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewFakePairPicker.h
 )
@@ -29,7 +28,6 @@ set(DESKTOP_APP_SYNC_PREVIEW_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewPairController.cpp
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewDialog.cpp
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewPairDetailDialog.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewRowWidget.cpp
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewConsequencesDialog.cpp
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewFakePairPicker.cpp
 )

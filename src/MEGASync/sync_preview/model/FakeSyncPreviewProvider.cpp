@@ -125,6 +125,33 @@ namespace SyncPreview
         remoteBuilder.addFolder(QStringLiteral("deep/l2/l3/l4/l5"));
         remoteBuilder.addFile(QStringLiteral("deep/l2/l3/l4/l5/deep.txt"), 5, 900, "deep");
 
+        // Nested working tree, four levels deep, mixed states in one
+        // branch: identical at the top, a CRC-only modification at the
+        // bottom (the folders along the path read Modified).
+        localBuilder.addFolder(QStringLiteral("projects/mega/client/src"));
+        localBuilder.addFile(QStringLiteral("projects/mega/client/src/main.cpp"), 500, 3000, "main-local");
+        localBuilder.addFile(QStringLiteral("projects/mega/client/src/util.h"), 120, 3100, "util");
+        remoteBuilder.addFolder(QStringLiteral("projects/mega/client/src"));
+        remoteBuilder.addFile(QStringLiteral("projects/mega/client/src/main.cpp"), 500, 3500, "main-remote");
+        remoteBuilder.addFile(QStringLiteral("projects/mega/client/src/util.h"), 120, 3100, "util");
+
+        return {localBuilder.build(), remoteBuilder.build()};
+    }
+
+    FakeScenario FakeScenarios::renameSwap()
+    {
+        FakeTreeBuilder localBuilder;
+        FakeTreeBuilder remoteBuilder;
+
+        // The rename-swap trap: remote renamed foo.txt to bar.txt (the old
+        // content survives under the new name) while local edited foo.txt.
+        // A naive L->R transfer overwrites the remote edit with content the
+        // remote already keeps under bar.txt; the honest resolution is a
+        // rename-aware swap (later stage).
+        localBuilder.addFile(QStringLiteral("foo.txt"), 100, 1000, "hash_1");
+        remoteBuilder.addFile(QStringLiteral("foo.txt"), 200, 2000, "hash_2");
+        remoteBuilder.addFile(QStringLiteral("bar.txt"), 100, 1000, "hash_1");
+
         return {localBuilder.build(), remoteBuilder.build()};
     }
 
