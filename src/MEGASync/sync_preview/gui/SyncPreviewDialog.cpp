@@ -223,14 +223,18 @@ namespace SyncPreview
             headerLayout->addWidget(changesButton);
 
             auto* commitButton = new QPushButton(tr("Commit pair"), rowWidget);
-            commitButton->setToolTip(tr("Opens the pre-filled create-sync dialog (Stage 5)"));
+            commitButton->setToolTip(tr("Applies the approved plan to this pair's fake data and drops the pair (mocked sync creation)"));
             GuiStyle::styleOutlineButton(commitButton);
             commitButton->setEnabled(mController->allApproved(pair.id));
-            connect(commitButton, &QPushButton::clicked, this, [this]()
+            connect(commitButton, &QPushButton::clicked, this, [this, pairId]()
             {
-                QMessageBox::information(this,
-                                         tr("Sync pre-commit review"),
-                                         tr("The commit flow arrives in Stage 5; the reviewed decisions are already persisted."));
+                if (QMessageBox::question(this,
+                                          tr("Commit pair"),
+                                          tr("Apply the approved plan to this pair's fake data and drop it from the review queue (mocked sync creation)?"))
+                    == QMessageBox::Yes)
+                {
+                    mController->commitPair(pairId);
+                }
             });
             headerLayout->addWidget(commitButton);
 

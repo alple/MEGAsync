@@ -135,6 +135,12 @@ namespace SyncPreview
         // on approvals: undecided flagged rows contribute no operations.
         bool applyPlan(const QString& pairId);
 
+        // Mocked commit (MEGA-2.10; the Stage-5 real commit flow replaces
+        // this at the same seam): gated on the approval gate, applies the
+        // plan through the installed applier (fake data), then drops the
+        // pair from the queue — "the sync was created" in the mock.
+        bool commitPair(const QString& pairId);
+
         // Commit gate: every row requiring approval must be approved. A row
         // the user explicitly resolved to "do nothing" (own decision or
         // inherited from a directory decision) does not await approval;

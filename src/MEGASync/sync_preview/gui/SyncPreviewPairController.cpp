@@ -274,15 +274,22 @@ namespace SyncPreview
             return;
         }
 
-        const auto classificationIt = mClassifications.constFind(pairId);
-        const Row* row = classificationIt != mClassifications.constEnd()
-            ? classificationIt->find(relativePath) : nullptr;
-
+        // Approval attaches to an EXISTING decision only (MEGA-2.10): the
+        // UI offers the Approve toggle when a row's effective action is
+        // decidable — a chosen action — so an undecided flagged row has
+        // nothing to approve. Creating approve-only decisions here used to
+        // make the planner read them as explicit choices (killing the
+        // directory cascade and emptying the commit plan); the reviewer
+        // decides first, then approves.
         for (RowDecision& decision : pairPtr->decisions)
         {
             if (decision.relativePath == relativePath)
             {
                 decision.approved = approved;
+
+                const auto classificationIt = mClassifications.constFind(pairId);
+                const Row* row = classificationIt != mClassifications.constEnd()
+                    ? classificationIt->find(relativePath) : nullptr;
                 if (row)
                 {
                     decision.kind = static_cast<int>(row->kind);
@@ -293,16 +300,6 @@ namespace SyncPreview
                 return;
             }
         }
-
-        RowDecision decision;
-        decision.relativePath = relativePath;
-        decision.action = row ? row->recommendedAction : Action::None;
-        decision.approved = approved;
-        decision.kind = row ? static_cast<int>(row->kind) : RowDecision::UNKNOWN_KIND;
-        decision.requiresApproval = row ? row->requiresApproval : false;
-        pairPtr->decisions.append(decision);
-        persist();
-        emit pairChanged(pairId);
     }
 
     void PairController::addPair(const PairCandidate& candidate)
@@ -381,6 +378,32 @@ namespace SyncPreview
 
         persist();
         emit pairChanged(pairId);
+        return true;
+    }
+
+    bool PairController::commitPair(const QString& pairId)
+    {
+        if (!allApproved(pairId))
+        {
+            mLastError = QStringLiteral("Not every row is approved yet");
+            return false;
+        }
+
+        // The mocked commit applies the plan to the pair's fake data (the
+        // re-added scenario then re-scans to the post-commit state) before
+        // the pair leaves the queue. Without an applier the drop still
+        // stands in for sync creation.
+        if (mPlanApplier)
+        {
+            const Plan pairPlan = plan(pairId);
+            if (!mPlanApplier(pairId, pairPlan))
+            {
+                mLastError = QStringLiteral("Could not apply the plan for pair %1").arg(pairId);
+                return false;
+            }
+        }
+
+        removePair(pairId);
         return true;
     }
 

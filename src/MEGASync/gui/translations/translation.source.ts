@@ -8913,18 +8913,6 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Opens the pre-filled create-sync dialog (Stage 5)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Sync pre-commit review</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>The commit flow arrives in Stage 5; the reviewed decisions are already persisted.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Remove</source>
         <translation type="unfinished">Remove</translation>
     </message>
@@ -8990,6 +8978,14 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
     <message>
         <source>Lists the changes scheduled under the current decisions (renames included)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applies the approved plan to this pair&apos;s fake data and drops the pair (mocked sync creation)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply the approved plan to this pair&apos;s fake data and drop it from the review queue (mocked sync creation)?</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -9226,6 +9222,18 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
     <message>
         <source>Executes the scheduled changes on the fake data and re-resolves the panes (review loop, no real transfer)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Row colors: what each pane shows about the pair state</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Synchronize view</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Applies the left pane&apos;s expansion state to the right pane so both panes show the same shape</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

@@ -4,7 +4,7 @@ title: 'Sync pre-commit review: diff, conflict resolution, then create syncs'
 status: Testing
 assignee: []
 created_date: '2026-09-24 11:28'
-updated_date: '2026-09-25 20:00'
+updated_date: '2026-09-26 15:24'
 labels:
   - sync-preview
 milestone: Sync pre-commit review
@@ -39,6 +39,7 @@ Pre-commit review for creating sync pairs in this MEGAsync fork. Today, creating
 - **Deletion policy**: recoverable — remote → MEGA Rubbish (`moveNodeToRubbish`), local → OS trash/backup folder; never hard unlink.
 - **Commit semantics**: approval gate → pre-filled standard create-sync dialog → on confirm apply plan → re-verify → create active. Unapproved rows block commit. Per-pair or batch commit.
 - **Safety checklist**: blocker rows (case-insensitive name collisions, file-vs-folder type mismatches — cannot be resolved by a transfer; require rename/exclusion); staleness re-scan with re-flagging on reopen and at commit; upload-replace = upload + moveNodeToRubbish(old) as one logical recoverable operation (verified: COLLISION_RESOLUTION_* is download-only, uploads have no overwrite flag); upload-size estimate pre-commit; row caps with load-more; full persistence of queue + decisions with re-verify on load; ignore-excluded items listed with advisory note.
+- **Staging (re-staged 2026-09-26, user directive)**: UI-complete-on-fake-data BEFORE any production API integration — every review-dialog button functional against in-memory fake data first, commit flow mocked end-to-end (commit applies the plan to the fake data and drops the pair). Real providers, enforcement and commit orchestration sequence after; the real flow replaces the mock at the same seams.
 
 ## Architecture
 
@@ -51,13 +52,14 @@ Pre-commit review for creating sync pairs in this MEGAsync fork. Today, creating
 ## Implementation stages
 
 1. **Core: providers seam + fake-data engine** — provider interfaces, fake provider with generated edge cases, classification + consequences planner ({upload, download, deleteRemote, deleteLocal, none}), persistence serialization, unit tests. No UI, no real API. → MEGA-2.1
-2. **Review dialog on fake data** — dual-pane list, per-row/per-directory actions, conflict flags, approval gating, consequences popup, multi-pair queue, persisted-queue restore; runs entirely on the fake provider. → MEGA-2.2
-3. **Real providers** — local walk (cancellable, CRC) + remote enumeration (getChildren), read-only, replacing fake in the same seam. → MEGA-2.3
-4. **Enforcement engine** — execute the approved plan with verified primitives (upload+Rubbish-old composition, downloads, recoverable deletions), re-verify pass. → MEGA-2.4
-5. **Commit orchestration + entry points** — approval gate, batch commit, hand-off into the pre-filled standard create-sync dialog (fallback: in-dialog confirm calling SyncController::addSync), wizard button + tray entry + MegaApplication hook. → MEGA-2.5
-6. **Safety checklist + E2E verification** — safety checklist as hard requirements; fresh-account probe proving the preview matches engine verdicts. → MEGA-2.6
+2. **Review dialog on fake data** — dual-pane list, per-row/per-directory actions, conflict flags, approval gating, consequences popup, multi-pair queue, persisted-queue restore; runs entirely on the fake provider. → MEGA-2.2 (reworked MEGA-2.7, polished MEGA-2.8)
+3. **UI-complete on fake data (fully mocked, the staging gate)** — every button functional against in-memory fake data: rename-aware conflict/blocker resolution, show-changes/apply review loop → MEGA-2.9; mocked commit flow, pane view sync, legend, chrome fixes → MEGA-2.10. No production API work starts until this stage is fully functional.
+4. **Real providers** — local walk (cancellable, CRC) + remote enumeration (getChildren), read-only, replacing fake in the same seam. → MEGA-2.3
+5. **Enforcement engine** — execute the approved plan with verified primitives (upload+Rubbish-old composition, downloads, recoverable deletions), re-verify pass. → MEGA-2.4
+6. **Commit orchestration + entry points** — real approval gate flow, batch commit, hand-off into the pre-filled standard create-sync dialog (fallback: in-dialog confirm calling SyncController::addSync), wizard button + tray entry + MegaApplication hook; replaces the mocked commit at the same seam. → MEGA-2.5
+7. **Safety checklist + E2E verification** — safety checklist as hard requirements; fresh-account probe proving the preview matches engine verdicts. → MEGA-2.6
 
-Dependency spine: 1 → 2; 1 → 3 → 4; (2,4) → 5; (3,4) → 6.
+Dependency spine: 1 → 2 → 3 → 4 → 5 → 6 → 7 (the UI-complete gate closes before any real integration).
 
 ## Out of scope
 
@@ -67,7 +69,7 @@ Gating live syncs; SDK modifications; persistent snapshot caching; textual diffs
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
 - [ ] #1 The epic body is the implementation spec including all decision records inlined: goal, locked user model, architecture with provider seam, stage list with dependency spine, out-of-scope list — no fog remains
-- [ ] #2 Implementation stages exist as children starting at MEGA-2.1 with the dependency spine wired (1→2, 1→3→4, (2,4)→5, (3,4)→6)
+- [ ] #2 Implementation stages exist as children starting at MEGA-2.1 with the dependency spine wired (1→2→3→4→5→6→7, the UI-complete gate closing before any real integration)
 - [ ] #3 Every stage's operation vocabulary references only verified real-API actions; no SDK source modifications are prescribed anywhere
 - [ ] #4 No real account names, personal paths, or absolute machine paths appear in any ticket text
 <!-- AC:END -->

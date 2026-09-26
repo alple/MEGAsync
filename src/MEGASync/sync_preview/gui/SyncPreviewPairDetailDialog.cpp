@@ -340,11 +340,14 @@ namespace SyncPreview
         mUi->pathFilterEdit->setMaximumWidth(360);
         GuiStyle::styleOutlineButton(mUi->closeButton);
         // Review-loop surface (MEGA-2.9): the scheduled-changes list and
-        // the fake-data Apply step, beside the state filters.
+        // the fake-data Apply step, beside the state filters — plus the
+        // pane-view normalizer (MEGA-2.10).
         GuiStyle::styleOutlineButton(mUi->showChangesButton);
         GuiStyle::styleOutlineButton(mUi->applyButton);
+        GuiStyle::styleOutlineButton(mUi->synchronizeViewButton);
         connect(mUi->showChangesButton, &QPushButton::clicked, this, [this]() { showChanges(); });
         connect(mUi->applyButton, &QPushButton::clicked, this, [this]() { applyPlan(); });
+        connect(mUi->synchronizeViewButton, &QPushButton::clicked, this, [this]() { synchronizeView(); });
 
         for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
         {
@@ -524,6 +527,35 @@ namespace SyncPreview
             }
             mApproveButton->setStyleSheet(GuiStyle::approveButtonStyleSheet());
         }
+
+        // Filter-row and footer chrome (MEGA-2.10): the action panel's
+        // token-resolved quiet sheet instead of the property-outline look,
+        // which rendered unreadable (dark on dark) for the reviewer —
+        // re-resolved on theme change like the rest of the window.
+        const QString chromeSheet = GuiStyle::actionButtonStyleSheet();
+        for (QPushButton* chrome : {mUi->closeButton, mUi->showChangesButton, mUi->applyButton, mUi->synchronizeViewButton})
+        {
+            chrome->setStyleSheet(chromeSheet);
+        }
+
+        // The state legend (MEGA-2.10), top-right beside the pair label:
+        // colored dots over the same tokens the panes use, re-resolved on
+        // every theme change.
+        auto themeInstance = TokenParserWidgetManager::instance();
+        const QColor info = themeInstance->getColor(QLatin1String("text-info"));
+        const QColor success = themeInstance->getColor(QLatin1String("text-success"));
+        const QColor error = themeInstance->getColor(QLatin1String("text-error"));
+        const QColor secondary = themeInstance->getColor(QLatin1String("text-secondary"));
+        mUi->legendLabel->setText(QStringLiteral(
+            "<span style=\"color:%1;\">●</span> %5 &nbsp;&nbsp; "
+            "<span style=\"color:%2;\">●</span> %6 &nbsp;&nbsp; "
+            "<span style=\"color:%3;\">●</span> %7 &nbsp;&nbsp; "
+            "<span style=\"color:%4;\">●</span> %8 &nbsp;&nbsp; "
+            "<span style=\"color:%4; text-decoration: line-through;\">●</span> %9")
+            .arg(info.name(), success.name(), error.name(), secondary.name(),
+                 stateText(PaneState::Modified), stateText(PaneState::New),
+                 stateText(PaneState::Blocked), stateText(PaneState::Same),
+                 stateText(PaneState::Missing)));
     }
 
     void SyncPreviewPairDetailDialog::rebuild()
@@ -737,7 +769,11 @@ namespace SyncPreview
             item->setIcon(kColPath, QIcon(QStringLiteral(":/") + kFileIcon));
         }
 
-        if (side && side->isFolder())
+        // Expansion on BOTH panes for every folder row (MEGA-2.10): a
+        // folder missing on one side keeps its struck-through name but
+        // still expands/collapses in lock-step — the reviewer sees the
+        // same tree shape left and right.
+        if (isFolder)
         {
             item->setExpanded(mExpandedByPath.value(row.relativePath, true));
         }
@@ -1053,5 +1089,30 @@ namespace SyncPreview
         // undecided flagged rows contribute no operations. No real API
         // calls happen here (the applier mutates the fake trees only).
         mController->applyPlan(mPairId);
+    }
+
+    void SyncPreviewPairDetailDialog::synchronizeView()
+    {
+        // The left pane is the reference: its per-path expansion state is
+        // recorded and mirrored onto the right pane, so both panes show
+        // the same shape. mSyncingPanes suppresses the mirror signals.
+        mSyncingPanes = true;
+        for (auto it = mLeftItems.constBegin(); it != mLeftItems.constEnd(); ++it)
+        {
+            QTreeWidgetItem* leftItem = it.value();
+            if (!leftItem->childCount())
+            {
+                continue;
+            }
+            const bool expanded = leftItem->isExpanded();
+            mExpandedByPath.insert(it.key(), expanded);
+            const auto rightIt = mRightItems.constFind(it.key());
+            if (rightIt != mRightItems.constEnd() && rightIt.value()
+                && rightIt.value()->isExpanded() != expanded)
+            {
+                rightIt.value()->setExpanded(expanded);
+            }
+        }
+        mSyncingPanes = false;
     }
 }

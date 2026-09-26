@@ -120,7 +120,8 @@ TEST_CASE("PairController tracks decisions, approvals and the commit gate")
     // The conflict rows require approval: the gate is closed initially.
     CHECK_FALSE(controller.allApproved(pairId));
 
-    // Approve every flagged row.
+    // The reviewer decides the flagged rows first (explicit do-nothing
+    // here), then approves: approval attaches to an existing decision.
     const Classification& classification = controller.classification(pairId);
     QStringList flagged;
     for (const Row& row : classification.rows)
@@ -129,6 +130,7 @@ TEST_CASE("PairController tracks decisions, approvals and the commit gate")
         {
             CHECK(row.kind == RowKind::Conflict);
             flagged.append(row.relativePath);
+            controller.setAction(pairId, row.relativePath, Action::None);
             controller.setApproved(pairId, row.relativePath, true);
         }
     }
@@ -168,10 +170,13 @@ TEST_CASE("PairController re-flags changed classifications on restore")
     REQUIRE(dir.isValid());
     const QString filePath = dir.filePath(QStringLiteral("queue.json"));
 
-    PairController first{QueueFileStore(filePath)};
+        PairController first{QueueFileStore(filePath)};
     first.setSideProviderFactory(factoryFor(QStringLiteral("demo-a"), scenarioA()));
     first.addPair(candidateA());
     const QString pairId = first.pairs().first().id;
+    // Decide the conflict row first (explicit do-nothing), then approve the
+    // decision: approval attaches to an existing decision.
+    first.setAction(pairId, QStringLiteral("old/b.txt"), Action::None);
     first.setApproved(pairId, QStringLiteral("old/b.txt"), true);
 
     // The fake scenario for the same label changed: the twin is gone, so
@@ -441,4 +446,116 @@ TEST_CASE("applyPlan mutates the fake data and re-verifies the pair")
     PairController bare{QueueFileStore(dir.filePath(QStringLiteral("bare.json")))};
     bare.addPair(candidateA());
     CHECK_FALSE(bare.applyPlan(bare.pairs().first().id));
+}
+
+TEST_CASE("commitPair applies the plan and drops the pair")
+{
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+    const QString filePath = dir.filePath(QStringLiteral("queue.json"));
+
+    // One shared mutable scenario stands in for the dialog's fake-data
+    // store, mutated by the commit's plan application.
+    const auto shared = std::make_shared<FakeScenario>(scenarioA());
+
+    PairController controller{QueueFileStore(filePath)};
+    controller.setSideProviderFactory(
+        [shared](const Pair& pair) -> std::optional<PairSideProviders>
+        {
+            if (pair.localPath != QStringLiteral("demo-a"))
+            {
+                return std::nullopt;
+            }
+            return PairSideProviders{std::make_shared<FakeSideProvider>(shared->local),
+                                     std::make_shared<FakeSideProvider>(shared->remote)};
+        });
+    controller.setPlanApplier(
+        [shared](const QString&, const Plan& plan) -> bool
+        {
+            applyPlan(*shared, plan);
+            return true;
+        });
+
+    controller.addPair(candidateA());
+    const QString pairId = controller.pairs().first().id;
+
+    // The gate: unapproved pairs refuse to commit.
+    CHECK_FALSE(controller.commitPair(pairId));
+    REQUIRE_FALSE(controller.pairs().isEmpty());
+
+    // The reviewer decides both conflicts — the local row's adopt wins and
+    // covers the twin row's own adopt (still a decision needing approval) —
+    // then approves both: the gate opens.
+    controller.setAction(pairId, QStringLiteral("old/b.txt"), Action::LocalToRemote);
+    controller.setAction(pairId, QStringLiteral("twin/x.txt"), Action::RemoteToLocal);
+    const Classification& classification = controller.classification(pairId);
+    for (const Row& row : classification.rows)
+    {
+        if (row.requiresApproval)
+        {
+            controller.setApproved(pairId, row.relativePath, true);
+        }
+    }
+    CHECK(controller.allApproved(pairId));
+
+    bool removed = false;
+    QObject::connect(&controller, &PairController::pairRemoved, [&removed](const QString&) { removed = true; });
+    REQUIRE(controller.commitPair(pairId));
+    CHECK(removed);
+    CHECK(controller.pairs().isEmpty());
+
+    // The drop persisted.
+    PairController reloaded{QueueFileStore(filePath)};
+    reloaded.setSideProviderFactory(
+        [shared](const Pair& pair) -> std::optional<PairSideProviders>
+        {
+            if (pair.localPath != QStringLiteral("demo-a"))
+            {
+                return std::nullopt;
+            }
+            return PairSideProviders{std::make_shared<FakeSideProvider>(shared->local),
+                                     std::make_shared<FakeSideProvider>(shared->remote)};
+        });
+    reloaded.restore();
+    CHECK(reloaded.pairs().isEmpty());
+
+    // The commit applied the plan to the fake data: re-adding the same
+    // scenario re-scans to the post-commit state — everything identical,
+    // the "sync happened" mock demonstration.
+    reloaded.addPair(candidateA());
+    REQUIRE(reloaded.pairs().size() == 1);
+    const Classification& postCommit = reloaded.classification(reloaded.pairs().first().id);
+    REQUIRE_FALSE(postCommit.rows.isEmpty());
+    for (const Row& row : postCommit.rows)
+    {
+        CAPTURE(row.relativePath.toStdString(), static_cast<int>(row.kind));
+        CHECK(row.kind == RowKind::Identical);
+    }
+}
+
+TEST_CASE("commitPair without an applier still drops the pair")
+{
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+
+        PairController controller{QueueFileStore(dir.filePath(QStringLiteral("queue.json")))};
+    controller.setSideProviderFactory(factoryFor(QStringLiteral("demo-a"), scenarioA()));
+    controller.addPair(candidateA());
+    const QString pairId = controller.pairs().first().id;
+
+    // Decide the conflicts (explicit do-nothing) and approve: the gate
+    // needs decisions plus approvals, with or without an applier.
+    controller.setAction(pairId, QStringLiteral("old/b.txt"), Action::None);
+    controller.setAction(pairId, QStringLiteral("twin/x.txt"), Action::None);
+    const Classification& classification = controller.classification(pairId);
+    for (const Row& row : classification.rows)
+    {
+        if (row.requiresApproval)
+        {
+            controller.setApproved(pairId, row.relativePath, true);
+        }
+    }
+
+    REQUIRE(controller.commitPair(pairId));
+    CHECK(controller.pairs().isEmpty());
 }

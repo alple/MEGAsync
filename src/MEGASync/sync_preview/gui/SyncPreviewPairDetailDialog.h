@@ -69,6 +69,9 @@ namespace SyncPreview
         // pairChanged signal drives the rebuild).
         void showChanges();
         void applyPlan();
+        // Pane-view normalizer (MEGA-2.10): mirrors the left pane's
+        // per-path expansion onto the right pane.
+        void synchronizeView();
         // Keeps the panes aligned: same path expanded, selected, scrolled.
         void syncScrollFrom(QScrollBar* source);
         void syncSelectionFrom(QTreeWidget* source);

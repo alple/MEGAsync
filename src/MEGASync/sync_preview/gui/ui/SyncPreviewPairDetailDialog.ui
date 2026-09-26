@@ -36,11 +36,41 @@
     <number>12</number>
    </property>
    <item>
-    <widget class="QLabel" name="pairLabel">
-     <property name="text">
-      <string/>
-     </property>
-    </widget>
+    <layout class="QHBoxLayout" name="headerLayout">
+     <item>
+      <widget class="QLabel" name="pairLabel">
+       <property name="text">
+        <string/>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="headerSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>10</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QLabel" name="legendLabel">
+       <property name="text">
+        <string/>
+       </property>
+       <property name="textFormat">
+        <enum>Qt::RichText</enum>
+       </property>
+       <property name="toolTip">
+        <string>Row colors: what each pane shows about the pair state</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
    </item>
    <item>
     <layout class="QHBoxLayout" name="filterLayout">
@@ -121,6 +151,16 @@
        </property>
        <property name="toolTip">
         <string>Executes the scheduled changes on the fake data and re-resolves the panes (review loop, no real transfer)</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="synchronizeViewButton">
+       <property name="text">
+        <string>Synchronize view</string>
+       </property>
+       <property name="toolTip">
+        <string>Applies the left pane's expansion state to the right pane so both panes show the same shape</string>
        </property>
       </widget>
      </item>
