@@ -49,7 +49,10 @@ namespace SyncPreview
     // verified primitive sequences (upload + moveNodeToRubbish(old);
     // download with local collision handling). Nothing ever hard-unlinks:
     // remote items go to MEGA Rubbish, local items go to the OS trash or
-    // backup folder.
+    // backup folder. The rename types (MEGA-2.9, rename-aware conflict and
+    // blocker resolution) ride on moveNode remotely (rename = move within
+    // the tree) and a safe local rename; Stage 4 verifies both before any
+    // real execution.
     enum class OperationType
     {
         Upload,
@@ -58,6 +61,8 @@ namespace SyncPreview
         DownloadReplace,
         DeleteRemoteToRubbish,
         DeleteLocalToTrash,
+        RenameRemote,
+        RenameLocal,
         None
     };
 }

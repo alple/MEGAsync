@@ -1,9 +1,12 @@
 #include "FakeSyncPreviewProvider.h"
+#include "SyncPreviewFakeApplier.h"
 #include "SyncPreviewPairController.h"
 
 #include <QTemporaryDir>
 
 #include <catch.hpp>
+
+#include <memory>
 
 using namespace SyncPreview;
 
@@ -270,28 +273,32 @@ TEST_CASE("PairController summarizes subtree stats and the pending delta")
     CHECK(subtree.pendingRemoteFiles == 1);
     CHECK(subtree.pendingRemoteRemoved == 0);
 
-    // Deciding both conflict rows keeps the same one-upload/one-download
-    // shape; folder nodes carry no bytes.
+    // Deciding both conflict rows (rename-aware semantics, MEGA-2.9): the
+    // local row's arrow adopts the identical remote twin by renaming it to
+    // old/b.txt — a rename transfers no bytes — and consumes the twin row,
+    // whose own decision is superseded and plans nothing.
     controller.setAction(pairId, QStringLiteral("old/b.txt"), Action::LocalToRemote);
     controller.setAction(pairId, QStringLiteral("twin/x.txt"), Action::RemoteToLocal);
 
     const PairSummary delta = controller.summary(pairId);
     CHECK(delta.localBytes == 40);
     CHECK(delta.remoteBytes == 40);
-    CHECK(delta.pendingRemoteBytes == 30);  // upload of old/b.txt (30)
-    CHECK(delta.pendingRemoteFiles == 1);
-    CHECK(delta.pendingLocalBytes == 30);   // download of twin/x.txt (30)
-    CHECK(delta.pendingLocalFiles == 1);
+    CHECK(delta.pendingRemoteBytes == 0);
+    CHECK(delta.pendingRemoteFiles == 0);
+    CHECK(delta.pendingLocalBytes == 0);
+    CHECK(delta.pendingLocalFiles == 0);
     CHECK(delta.pendingLocalRemoved == 0);
     CHECK(delta.pendingRemoteRemoved == 0);
 
-    // A "do nothing" decision on one conflict row removes it from the delta.
+    // Dropping the local row's decision back to "do nothing" hands the
+    // resolution to the remote row: its arrow now adopts the local twin by
+    // renaming it to twin/x.txt — again a rename, still no bytes.
     controller.setAction(pairId, QStringLiteral("old/b.txt"), Action::None);
     const PairSummary afterNone = controller.summary(pairId);
     CHECK(afterNone.pendingRemoteBytes == 0);
     CHECK(afterNone.pendingRemoteFiles == 0);
-    CHECK(afterNone.pendingLocalBytes == 30);
-    CHECK(afterNone.pendingLocalFiles == 1);
+    CHECK(afterNone.pendingLocalBytes == 0);
+    CHECK(afterNone.pendingLocalFiles == 0);
 
     // Unknown pair id: zeros.
     const PairSummary none = controller.summary(QStringLiteral("no-such-pair"));
@@ -337,4 +344,101 @@ TEST_CASE("PairController summary dedupes cascaded directory consequences")
     cascaded = controller.summary(pairId);
     CHECK(cascaded.pendingRemoteFiles == 2);
     CHECK(cascaded.pendingRemoteBytes == 150);
+}
+
+TEST_CASE("Explicit do-nothing decisions stay out of the commit gate")
+{
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+
+    PairController controller{QueueFileStore(dir.filePath(QStringLiteral("queue.json")))};
+    controller.setSideProviderFactory(factoryFor(QStringLiteral("demo-a"), scenarioA()));
+    controller.addPair(candidateA());
+    const QString pairId = controller.pairs().first().id;
+
+    // Both conflict rows await: they are flagged and undecided (their
+    // recommended action is None, which is not an explicit decision).
+    const QStringList undecided = controller.awaitingApprovalPaths(pairId);
+    REQUIRE(undecided.size() == 2);
+    CHECK(undecided.contains(QStringLiteral("old/b.txt")));
+    CHECK(undecided.contains(QStringLiteral("twin/x.txt")));
+
+    // An explicit do-nothing decision on one row takes it out of the gate;
+    // the undecided twin still blocks.
+    controller.setAction(pairId, QStringLiteral("old/b.txt"), Action::None);
+    const QStringList afterNone = controller.awaitingApprovalPaths(pairId);
+    REQUIRE(afterNone.size() == 1);
+    CHECK(afterNone.first() == QStringLiteral("twin/x.txt"));
+    CHECK_FALSE(controller.allApproved(pairId));
+
+    // A do-nothing inherited from a directory decision cascades the same
+    // way: deciding the parent folder to none clears the child too.
+    controller.setAction(pairId, QStringLiteral("twin"), Action::None);
+    CHECK(controller.awaitingApprovalPaths(pairId).isEmpty());
+    CHECK(controller.allApproved(pairId));
+
+    // Approval itself still satisfies the gate for a decided transfer row.
+    controller.setAction(pairId, QStringLiteral("old/b.txt"), Action::LocalToRemote);
+    CHECK(controller.awaitingApprovalPaths(pairId).size() == 1);
+    controller.setApproved(pairId, QStringLiteral("old/b.txt"), true);
+    CHECK(controller.allApproved(pairId));
+}
+
+TEST_CASE("applyPlan mutates the fake data and re-verifies the pair")
+{
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+
+    // One shared mutable scenario stands in for the dialog's fake-data
+    // store: both the factory and the plan applier see the same trees.
+    const auto shared = std::make_shared<FakeScenario>(scenarioA());
+
+    PairController controller{QueueFileStore(dir.filePath(QStringLiteral("queue.json")))};
+    controller.setSideProviderFactory(
+        [shared](const Pair& pair) -> std::optional<PairSideProviders>
+        {
+            if (pair.localPath != QStringLiteral("demo-a"))
+            {
+                return std::nullopt;
+            }
+            return PairSideProviders{std::make_shared<FakeSideProvider>(shared->local),
+                                     std::make_shared<FakeSideProvider>(shared->remote)};
+        });
+    controller.setPlanApplier(
+        [shared](const QString&, const Plan& plan) -> bool
+        {
+            applyPlan(*shared, plan);
+            return true;
+        });
+
+    controller.addPair(candidateA());
+    const QString pairId = controller.pairs().first().id;
+
+    // The adopt resolution: the twin content renames to old/b.txt.
+    controller.setAction(pairId, QStringLiteral("old/b.txt"), Action::LocalToRemote);
+
+    bool changed = false;
+    QObject::connect(&controller, &PairController::pairChanged, [&changed](const QString&) { changed = true; });
+    REQUIRE(controller.applyPlan(pairId));
+    CHECK(changed);
+
+    // The re-scan reads the applied trees: the adopt landed (old/b.txt
+    // identical on both sides) and the vanished twin row lost its decision.
+    const Classification& after = controller.classification(pairId);
+    const Row* b = after.find(QStringLiteral("old/b.txt"));
+    REQUIRE(b != nullptr);
+    CHECK(b->kind == RowKind::Identical);
+    CHECK(after.find(QStringLiteral("twin/x.txt")) == nullptr);
+
+    const Pair* pair = controller.pair(pairId);
+    REQUIRE(pair != nullptr);
+    for (const RowDecision& decision : pair->decisions)
+    {
+        CHECK_FALSE(decision.relativePath == QStringLiteral("twin/x.txt"));
+    }
+
+    // The plan applier is optional: without it the loop reports failure.
+    PairController bare{QueueFileStore(dir.filePath(QStringLiteral("bare.json")))};
+    bare.addPair(candidateA());
+    CHECK_FALSE(bare.applyPlan(bare.pairs().first().id));
 }

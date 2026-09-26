@@ -23,10 +23,18 @@ namespace SyncPreview
 
         // Conflict and blocker rows require explicit approval before commit.
         bool requiresApproval = false;
-        // Advisory (Conflict rows): an identical-content counterpart exists
-        // on the other side under a different name.
+        // Advisory: an identical-content counterpart exists elsewhere under
+        // a different name. Conflict rows carry their one twin (the other
+        // row's path); paired rows can carry up to two, one per transfer
+        // direction (MEGA-2.9): `twinPath` is a counterpart of the row's
+        // LOCAL content on the remote side (the L->R adopt target), and
+        // `localTwinPath` is a counterpart of the row's REMOTE content on
+        // the local side (the R->L adopt target). Single-sided rows hold
+        // only `twinPath` (their counterpart lives on the other side). The
+        // flags never change the row kind.
         bool hasIdenticalTwin = false;
         QString twinPath;
+        QString localTwinPath;
         // Advisory: the entry lives under a path blocked by a file-vs-folder
         // type mismatch.
         bool underBlockedPath = false;

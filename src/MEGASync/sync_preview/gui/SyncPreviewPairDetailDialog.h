@@ -64,6 +64,11 @@ namespace SyncPreview
         void applyPanesPalette();
         void repopulate();
         void updateActionPanel();
+        // Review-loop surface (MEGA-2.9): the scheduled-changes list and
+        // the fake-data Apply step (controller re-scans + re-verifies; the
+        // pairChanged signal drives the rebuild).
+        void showChanges();
+        void applyPlan();
         // Keeps the panes aligned: same path expanded, selected, scrolled.
         void syncScrollFrom(QScrollBar* source);
         void syncSelectionFrom(QTreeWidget* source);

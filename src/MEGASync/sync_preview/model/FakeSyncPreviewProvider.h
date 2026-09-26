@@ -50,7 +50,10 @@ namespace SyncPreview
         // both sides, same-name-different-content, same-content-different-
         // name, file-vs-folder type mismatch, case-insensitive name
         // collision, local-only and remote-only files, and a deep
-        // (five-level) identical subtree.
+        // (five-level) identical subtree. Also carries a nested
+        // rename-twin branch (MEGA-2.9): a remote backup copy of the
+        // local main.cpp content gives the modified src/main.cpp row an
+        // identical-content remote counterpart.
         FakeScenario edgeCaseKitchenSink();
 
         // Identical chain of `depth` nested folders ending in one identical
@@ -65,9 +68,31 @@ namespace SyncPreview
         FakeScenario manyLocalOnlyFiles(int count);
 
         // The rename-swap trap: remote renamed foo.txt to bar.txt (old
-        // content under the new name) while local edited foo.txt. Presents
-        // the transfer-overwrites-sibling-content edge case.
+        // content under the new name) while remote foo.txt holds new
+        // content. A naive L->R transfer overwrites content the remote
+        // already keeps under bar.txt; the rename-aware swap exchanges the
+        // two names instead (MEGA-2.9 acceptance fixture).
         FakeScenario renameSwap();
+
+        // Double rename, both directions: remote renamed foo.txt to
+        // bar.txt AND foo2.txt to foo.txt, so the paired foo.txt row has
+        // same-content counterparts on BOTH sides (bar.txt remotely,
+        // foo2.txt locally) — either arrow can resolve by rename.
+        FakeScenario renameChain();
+
+        // Rename + edit on top: remote renamed the original foo.txt to
+        // bar.txt and created a different foo.txt, while local edited
+        // foo.txt. No same-content counterpart exists anywhere, so no
+        // rename-aware resolution applies: the naive replace transfers
+        // with the unique-content advisory warning.
+        FakeScenario renameEdit();
+
+        // Rename across folders: remote moved docs/a.txt to archive/a.txt
+        // (old content under the new name) and replaced docs/a.txt with
+        // new content, while local kept docs/a.txt. The paired row's twin
+        // sits in another folder, so the rename-aware swap moves content
+        // across folders.
+        FakeScenario renameCrossFolder();
     }
 }
 

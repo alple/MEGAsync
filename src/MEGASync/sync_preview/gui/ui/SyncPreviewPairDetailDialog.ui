@@ -91,6 +91,39 @@
        </property>
       </widget>
      </item>
+     <item>
+      <spacer name="filterSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>10</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="showChangesButton">
+       <property name="text">
+        <string>Show changes</string>
+       </property>
+       <property name="toolTip">
+        <string>Lists the changes scheduled under the current decisions (renames included)</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="applyButton">
+       <property name="text">
+        <string>Apply</string>
+       </property>
+       <property name="toolTip">
+        <string>Executes the scheduled changes on the fake data and re-resolves the panes (review loop, no real transfer)</string>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item>

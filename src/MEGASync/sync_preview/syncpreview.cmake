@@ -5,6 +5,7 @@ set(DESKTOP_APP_SYNC_PREVIEW_HEADERS
     ${CMAKE_CURRENT_LIST_DIR}/model/FakeSyncPreviewProvider.h
     ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewClassifier.h
     ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewPlanner.h
+    ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewFakeApplier.h
     ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewQueue.h
     ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewQueueStore.h
     ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewQueueFileStore.h
@@ -14,6 +15,7 @@ set(DESKTOP_APP_SYNC_PREVIEW_HEADERS
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewPairDetailDialog.h
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewGuiFormat.h
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewConsequencesDialog.h
+    ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewChangesDialog.h
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewFakePairPicker.h
 )
 
@@ -22,6 +24,7 @@ set(DESKTOP_APP_SYNC_PREVIEW_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/model/FakeSyncPreviewProvider.cpp
     ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewClassifier.cpp
     ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewPlanner.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewFakeApplier.cpp
     ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewQueueStore.cpp
     ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewQueueFileStore.cpp
     ${CMAKE_CURRENT_LIST_DIR}/model/SyncPreviewReconciler.cpp
@@ -29,6 +32,7 @@ set(DESKTOP_APP_SYNC_PREVIEW_SOURCES
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewDialog.cpp
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewPairDetailDialog.cpp
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewConsequencesDialog.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewChangesDialog.cpp
     ${CMAKE_CURRENT_LIST_DIR}/gui/SyncPreviewFakePairPicker.cpp
 )
 

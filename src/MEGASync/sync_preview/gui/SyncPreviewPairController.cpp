@@ -18,6 +18,11 @@ namespace SyncPreview
         mSideProviderFactory = std::move(factory);
     }
 
+    void PairController::setPlanApplier(PlanApplier applier)
+    {
+        mPlanApplier = std::move(applier);
+    }
+
     void PairController::restore()
     {
         Queue loaded = mStore.load();
@@ -331,30 +336,117 @@ namespace SyncPreview
         }
     }
 
+    bool PairController::applyPlan(const QString& pairId)
+    {
+        Pair* pairPtr = nullptr;
+        for (Pair& pair : mQueue.pairs)
+        {
+            if (pair.id == pairId)
+            {
+                pairPtr = &pair;
+                break;
+            }
+        }
+        if (!pairPtr)
+        {
+            return false;
+        }
+        if (!mPlanApplier)
+        {
+            mLastError = QStringLiteral("No plan applier installed");
+            return false;
+        }
+
+        const Plan pairPlan = plan(pairId);
+        if (!mPlanApplier(pairId, pairPlan))
+        {
+            mLastError = QStringLiteral("Could not apply the plan for pair %1").arg(pairPtr->localPath);
+            return false;
+        }
+
+        // Re-scan the pair against the applied data and re-verify the
+        // decisions (Reconciler): rows the plan made vanish lose their
+        // decisions, rows whose classification changed are re-flagged.
+        if (rescanPair(*pairPtr))
+        {
+            Queue single;
+            single.pairs.append(*pairPtr);
+            QHash<QString, Classification> fresh;
+            fresh.insert(pairId, mClassifications.value(pairId));
+
+            const ReconcileResult result = Reconciler().reconcile(single, fresh);
+            *pairPtr = result.queue.pairs.first();
+            mReFlagged.insert(pairId, result.reFlaggedPaths.value(pairId));
+        }
+
+        persist();
+        emit pairChanged(pairId);
+        return true;
+    }
+
     int PairController::awaitingApprovalCount(const QString& pairId) const
     {
+        return awaitingApprovalPaths(pairId).size();
+    }
+
+    QStringList PairController::awaitingApprovalPaths(const QString& pairId) const
+    {
+        QStringList awaiting;
         const Classification& classification = this->classification(pairId);
         const Pair* pairPtr = pair(pairId);
         if (!pairPtr)
         {
-            return 0;
+            return awaiting;
         }
 
+        QHash<QString, Action> decisions;
         QHash<QString, bool> approvals;
         for (const RowDecision& decision : pairPtr->decisions)
         {
+            decisions.insert(decision.relativePath, decision.action);
             approvals.insert(decision.relativePath, decision.approved);
         }
 
-        int count = 0;
         for (const Row& row : classification.rows)
         {
-            if (row.requiresApproval && !approvals.value(row.relativePath, false))
+            if (!row.requiresApproval || approvals.value(row.relativePath, false))
             {
-                ++count;
+                continue;
             }
+
+            // Effective action: own decision > nearest ancestor directory
+            // decision > recommended action. Only an EXPLICIT do-nothing
+            // decision (own or inherited) takes a flagged row out of the
+            // gate; an undecided row whose recommendation is None (conflict
+            // and blocker rows) still awaits a decision.
+            Action effective = row.recommendedAction;
+            bool explicitDecision = decisions.contains(row.relativePath);
+            if (explicitDecision)
+            {
+                effective = decisions.value(row.relativePath);
+            }
+            else
+            {
+                QString ancestor = parentPath(row.relativePath);
+                while (!ancestor.isEmpty())
+                {
+                    if (decisions.contains(ancestor))
+                    {
+                        effective = decisions.value(ancestor);
+                        explicitDecision = true;
+                        break;
+                    }
+                    ancestor = parentPath(ancestor);
+                }
+            }
+
+            if (explicitDecision && effective == Action::None)
+            {
+                continue;
+            }
+            awaiting.append(row.relativePath);
         }
-        return count;
+        return awaiting;
     }
 
     bool PairController::allApproved(const QString& pairId) const

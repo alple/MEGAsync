@@ -134,6 +134,61 @@ namespace SyncPreview
             }
             return Action::None;
         }
+    // Pass D (MEGA-2.9): same-content counterparts for PAIRED rows.
+        // Pass C matched local-only placeholders against remote leftovers;
+        // paired rows whose sides differ get the same advisory treatment
+        // here, in both directions: a still-unmatched remote leftover
+        // holding the row's local content (the L->R adopt target) and a
+        // still-local-only placeholder holding the row's remote content
+        // (the R->L adopt target). Each counterpart serves at most one
+        // paired row (first match in tree order) so two rows can never plan
+        // to adopt the same twin; the flags are advisory only.
+        void flagPairedTwins(Classification& result)
+        {
+            QSet<int> claimedRemote;
+            QSet<int> claimedLocal;
+
+            for (int i = 0; i < result.rows.size(); ++i)
+            {
+                Row& paired = result.rows[i];
+                if (paired.kind != RowKind::BothDiffer || !paired.local || !paired.remote || paired.local->isFolder()
+                    || paired.remote->isFolder())
+                {
+                    continue;
+                }
+
+                for (int j = 0; j < result.rows.size(); ++j)
+                {
+                    Row& candidate = result.rows[j];
+                    if (candidate.kind != RowKind::RemoteOnly || claimedRemote.contains(j) || !candidate.remote
+                        || candidate.remote->isFolder() || !sameContent(*paired.local, *candidate.remote))
+                    {
+                        continue;
+                    }
+                    paired.hasIdenticalTwin = true;
+                    paired.twinPath = candidate.relativePath;
+                    candidate.hasIdenticalTwin = true;
+                    candidate.twinPath = paired.relativePath;
+                    claimedRemote.insert(j);
+                    break;
+                }
+
+                for (int j = 0; j < result.rows.size(); ++j)
+                {
+                    Row& candidate = result.rows[j];
+                    if (candidate.kind != RowKind::LocalOnly || claimedLocal.contains(j) || !candidate.local
+                        || candidate.local->isFolder() || !sameContent(*paired.remote, *candidate.local))
+                    {
+                        continue;
+                    }
+                    paired.localTwinPath = candidate.relativePath;
+                    candidate.hasIdenticalTwin = true;
+                    candidate.twinPath = paired.relativePath;
+                    claimedLocal.insert(j);
+                    break;
+                }
+            }
+        }
     }
 
     const Row* Classification::find(const QString& relativePath) const
@@ -286,6 +341,9 @@ namespace SyncPreview
             result.rows.append(row);
         }
 
+        // Advisory: same-content counterparts for paired rows (MEGA-2.9).
+        flagPairedTwins(result);
+
         // Advisory: entries under a type-mismatch blocker path.
         for (const Row& blocker : result.rows)
         {
@@ -323,6 +381,49 @@ namespace SyncPreview
         for (Row& row : result.rows)
         {
             row.recommendedAction = recommendedActionFor(row);
+        }
+
+        // Advisory override (MEGA-2.9): a single-sided row whose content
+        // also exists identically elsewhere under another name duplicates
+        // that content when transferred by default; a directory whose
+        // subtree holds such a row cascades the duplication. Both need an
+        // explicit decision instead of a default recommendation (the
+        // rename-aware arrows remain available). Pass-C conflict rows
+        // already recommend none, and directories over them keep the
+        // reviewed warn-and-transfer cascade.
+        auto passDTwinFlagged = [](const Row& row)
+        {
+            return row.hasIdenticalTwin && !row.twinPath.isEmpty()
+                && (row.kind == RowKind::LocalOnly || row.kind == RowKind::RemoteOnly || row.kind == RowKind::BothDiffer);
+        };
+
+        for (Row& row : result.rows)
+        {
+            if (passDTwinFlagged(row)
+                && (row.kind == RowKind::LocalOnly || row.kind == RowKind::RemoteOnly))
+            {
+                row.recommendedAction = Action::None;
+                continue;
+            }
+            if (row.kind != RowKind::LocalOnly && row.kind != RowKind::RemoteOnly)
+            {
+                continue;
+            }
+            const bool isDir = (row.local && row.local->isFolder()) || (row.remote && row.remote->isFolder());
+            if (!isDir)
+            {
+                continue;
+            }
+
+            const QString prefix = row.relativePath + QLatin1Char('/');
+            for (const Row& descendant : result.rows)
+            {
+                if (descendant.relativePath.startsWith(prefix) && passDTwinFlagged(descendant))
+                {
+                    row.recommendedAction = Action::None;
+                    break;
+                }
+            }
         }
 
         return result;

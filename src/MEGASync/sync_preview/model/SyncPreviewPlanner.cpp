@@ -1,5 +1,6 @@
 #include "SyncPreviewPlanner.h"
 
+#include <QSet>
 #include <QVector>
 
 namespace SyncPreview
@@ -64,43 +65,146 @@ namespace SyncPreview
             return type == OperationType::DeleteRemoteToRubbish || type == OperationType::DeleteLocalToTrash;
         }
 
-        void addConsequence(RowPlan& plan, OperationType type, const QString& path)
+        bool isRename(OperationType type)
         {
-            switch (type)
+            return type == OperationType::RenameRemote || type == OperationType::RenameLocal;
+        }
+
+        void addConsequence(RowPlan& plan, const PlannedOperation& operation)
+        {
+            switch (operation.type)
             {
                 case OperationType::Upload:
-                    plan.createdRemote.append(path);
+                    plan.createdRemote.append(operation.path);
                     break;
                 case OperationType::Download:
-                    plan.createdLocal.append(path);
+                    plan.createdLocal.append(operation.path);
                     break;
                 case OperationType::UploadReplace:
-                    plan.changedRemote.append(path);
+                    plan.changedRemote.append(operation.path);
                     break;
                 case OperationType::DownloadReplace:
-                    plan.changedLocal.append(path);
+                    plan.changedLocal.append(operation.path);
                     break;
                 case OperationType::DeleteRemoteToRubbish:
-                    plan.removedRemote.append(path);
+                    plan.removedRemote.append(operation.path);
                     break;
                 case OperationType::DeleteLocalToTrash:
-                    plan.removedLocal.append(path);
+                    plan.removedLocal.append(operation.path);
+                    break;
+                case OperationType::RenameRemote:
+                    plan.renamedRemote.append(qMakePair(operation.fromPath, operation.toPath));
+                    break;
+                case OperationType::RenameLocal:
+                    plan.renamedLocal.append(qMakePair(operation.fromPath, operation.toPath));
                     break;
                 case OperationType::None:
                     break;
             }
         }
 
-        // Operation for one file row from its effective action. Duplicate and
-        // best-effort advisory warnings are appended to `warnings`.
-        PlannedOperation operationForFileRow(const Row& row, Action action, QStringList& warnings)
+        PlannedOperation plannedOperation(OperationType type, const QString& path, bool isFolder = false, bool isSubtree = false)
         {
             PlannedOperation operation;
-            operation.path = row.relativePath;
+            operation.type = type;
+            operation.path = path;
+            operation.isFolder = isFolder;
+            operation.isSubtree = isSubtree;
+            return operation;
+        }
 
+        PlannedOperation renamePlannedOperation(OperationType type, const QString& rowPath,
+                                                const QString& fromPath, const QString& toPath, bool isFolder)
+        {
+            PlannedOperation operation;
+            operation.type = type;
+            operation.path = rowPath;
+            operation.isFolder = isFolder;
+            operation.fromPath = fromPath;
+            operation.toPath = toPath;
+            return operation;
+        }
+
+        // True when the entry's content also exists somewhere else on the
+        // given side (any other row's entry on that side), i.e. overwriting
+        // or removing it loses no last copy.
+        bool contentPreservedOnSide(const Classification& classification, const Entry& entry, bool localSide,
+                                    const QString& excludeRowPath)
+        {
+            for (const Row& other : classification.rows)
+            {
+                if (other.relativePath == excludeRowPath)
+                {
+                    continue;
+                }
+                const std::optional<Entry>& candidate = localSide ? other.local : other.remote;
+                if (candidate && sameContent(*candidate, entry))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // First free "name (N)[.ext]" spelling for an entry about to be
+        // displaced by an automatic rename (MEGA-2.9). Uniqueness is
+        // case-insensitive against every sibling path the destination side
+        // already holds, mirroring the case-insensitivity that makes a
+        // blocker out of same-name entries. Folders never split an
+        // extension off their name.
+        QString freeDisplacedName(const Classification& classification, bool localSide, const QString& existingPath, bool isFolder)
+        {
+            const QString dir = parentPath(existingPath);
+            const QString base = existingPath.mid(dir.isEmpty() ? 0 : dir.size() + 1);
+
+            QString stem = base;
+            QString extension;
+            if (!isFolder)
+            {
+                const int dot = base.lastIndexOf(QLatin1Char('.'));
+                if (dot > 0)
+                {
+                    stem = base.left(dot);
+                    extension = base.mid(dot);
+                }
+            }
+
+            QSet<QString> occupied;
+            for (const Row& row : classification.rows)
+            {
+                const std::optional<Entry>& side = localSide ? row.local : row.remote;
+                if (!side || parentPath(side->relativePath) != dir)
+                {
+                    continue;
+                }
+                occupied.insert(caseInsensitiveKey(side->relativePath));
+            }
+
+            for (int n = 1; n <= 1000; ++n)
+            {
+                const QString candidate =
+                    appendPath(dir, QStringLiteral("%1 (%2)%3").arg(stem).arg(n).arg(extension));
+                if (!occupied.contains(caseInsensitiveKey(candidate)))
+                {
+                    return candidate;
+                }
+            }
+            return appendPath(dir, stem + QStringLiteral(" (renamed)") + extension);
+        }
+
+        // Operation list for one file row from its effective action. The
+        // rename-aware expansions (MEGA-2.9): on conflict rows a transfer
+        // adopts the identical-content twin by renaming it to the row's
+        // path instead of duplicating content; on paired rows with a twin
+        // the transfer becomes the rename-aware swap so no content is lost;
+        // duplicate/unique-content advisory warnings are appended.
+        QVector<PlannedOperation> operationsForFileRow(const Row& row, Action action,
+                                                       const Classification& classification, QStringList& warnings)
+        {
+            QVector<PlannedOperation> operations;
             if (action == Action::None)
             {
-                return operation;
+                return operations;
             }
 
             const bool hasLocal = row.local.has_value();
@@ -108,19 +212,31 @@ namespace SyncPreview
 
             if (hasLocal && !hasRemote)
             {
+                if (action == Action::LocalToRemote && row.kind == RowKind::Conflict && !row.twinPath.isEmpty())
+                {
+                    // Adopt: the identical content already sits on the
+                    // remote side under the twin's name; renaming it to this
+                    // row's name resolves the conflict without a duplicate.
+                    operations.append(renamePlannedOperation(OperationType::RenameRemote, row.relativePath,
+                                                             row.twinPath, row.relativePath, false));
+                    warnings.append(QStringLiteral("Transfers by rename: the identical remote copy at %1 is renamed to %2, no content is uploaded")
+                                        .arg(row.twinPath, row.relativePath));
+                    return operations;
+                }
+
                 switch (action)
                 {
                     case Action::LocalToRemote:
                     case Action::BestEffort:
-                        operation.type = OperationType::Upload;
+                        operations.append(plannedOperation(OperationType::Upload, row.relativePath));
                         break;
                     case Action::RemoteToLocal:
-                        operation.type = OperationType::DeleteLocalToTrash;
+                        operations.append(plannedOperation(OperationType::DeleteLocalToTrash, row.relativePath));
                         break;
                     case Action::None:
                         break;
                 }
-                if (operation.type == OperationType::Upload && row.kind == RowKind::Conflict && !row.twinPath.isEmpty())
+                if (!operations.isEmpty() && operations.first().type == OperationType::Upload && !row.twinPath.isEmpty())
                 {
                     warnings.append(QStringLiteral("Uploading %1 duplicates identical content already on the remote side at %2")
                                         .arg(row.relativePath, row.twinPath));
@@ -128,19 +244,28 @@ namespace SyncPreview
             }
             else if (!hasLocal && hasRemote)
             {
+                if (action == Action::RemoteToLocal && row.kind == RowKind::Conflict && !row.twinPath.isEmpty())
+                {
+                    operations.append(renamePlannedOperation(OperationType::RenameLocal, row.relativePath,
+                                                             row.twinPath, row.relativePath, false));
+                    warnings.append(QStringLiteral("Transfers by rename: the identical local copy at %1 is renamed to %2, no content is downloaded")
+                                        .arg(row.twinPath, row.relativePath));
+                    return operations;
+                }
+
                 switch (action)
                 {
                     case Action::LocalToRemote:
-                        operation.type = OperationType::DeleteRemoteToRubbish;
+                        operations.append(plannedOperation(OperationType::DeleteRemoteToRubbish, row.relativePath));
                         break;
                     case Action::RemoteToLocal:
                     case Action::BestEffort:
-                        operation.type = OperationType::Download;
+                        operations.append(plannedOperation(OperationType::Download, row.relativePath));
                         break;
                     case Action::None:
                         break;
                 }
-                if (operation.type == OperationType::Download && row.kind == RowKind::Conflict && !row.twinPath.isEmpty())
+                if (operations.first().type == OperationType::Download && !row.twinPath.isEmpty())
                 {
                     warnings.append(QStringLiteral("Downloading %1 duplicates identical content already on the local side at %2")
                                         .arg(row.relativePath, row.twinPath));
@@ -148,14 +273,67 @@ namespace SyncPreview
             }
             else
             {
-                // Both sides present, differing.
+                // Both sides present, differing (or a blocker row; blockers
+                // are handled separately before this function).
+                if (action == Action::LocalToRemote && row.kind == RowKind::BothDiffer && !row.twinPath.isEmpty())
+                {
+                    // Rename-aware swap (MEGA-2.9): the local content
+                    // already exists on the remote side at the twin path, so
+                    // uploading would overwrite content the remote already
+                    // keeps elsewhere. First displace the remote entry at
+                    // this path (renamed into the twin's vacated name, or to
+                    // Rubbish when its content survives elsewhere on the
+                    // remote side), then adopt the twin at the row's path.
+                    if (contentPreservedOnSide(classification, *row.remote, false, row.relativePath))
+                    {
+                        operations.append(plannedOperation(OperationType::DeleteRemoteToRubbish, row.relativePath));
+                    }
+                    else
+                    {
+                        operations.append(renamePlannedOperation(OperationType::RenameRemote, row.relativePath,
+                                                                 row.relativePath, row.twinPath, false));
+                    }
+                    operations.append(renamePlannedOperation(OperationType::RenameRemote, row.relativePath,
+                                                             row.twinPath, row.relativePath, false));
+                    warnings.append(QStringLiteral("Rename-aware swap on the remote side: %1 and %2 exchange names so both contents survive")
+                                        .arg(row.relativePath, row.twinPath));
+                    return operations;
+                }
+                if (action == Action::RemoteToLocal && row.kind == RowKind::BothDiffer && !row.localTwinPath.isEmpty())
+                {
+                    if (contentPreservedOnSide(classification, *row.local, true, row.relativePath))
+                    {
+                        operations.append(plannedOperation(OperationType::DeleteLocalToTrash, row.relativePath));
+                    }
+                    else
+                    {
+                        operations.append(renamePlannedOperation(OperationType::RenameLocal, row.relativePath,
+                                                                 row.relativePath, row.localTwinPath, false));
+                    }
+                    operations.append(renamePlannedOperation(OperationType::RenameLocal, row.relativePath,
+                                                             row.localTwinPath, row.relativePath, false));
+                    warnings.append(QStringLiteral("Rename-aware swap on the local side: %1 and %2 exchange names so both contents survive")
+                                        .arg(row.relativePath, row.localTwinPath));
+                    return operations;
+                }
+
                 switch (action)
                 {
                     case Action::LocalToRemote:
-                        operation.type = OperationType::UploadReplace;
+                        operations.append(plannedOperation(OperationType::UploadReplace, row.relativePath));
+                        if (!contentPreservedOnSide(classification, *row.remote, false, row.relativePath))
+                        {
+                            warnings.append(QStringLiteral("Replacing %1 on the remote side discards content that is not preserved anywhere else on the remote side (recoverable via MEGA Rubbish)")
+                                                .arg(row.relativePath));
+                        }
                         break;
                     case Action::RemoteToLocal:
-                        operation.type = OperationType::DownloadReplace;
+                        operations.append(plannedOperation(OperationType::DownloadReplace, row.relativePath));
+                        if (!contentPreservedOnSide(classification, *row.local, true, row.relativePath))
+                        {
+                            warnings.append(QStringLiteral("Replacing %1 on the local side discards content that is not preserved anywhere else on the local side (recoverable via the OS trash)")
+                                                .arg(row.relativePath));
+                        }
                         break;
                     case Action::BestEffort:
                         warnings.append(QStringLiteral("Best-effort cannot merge differing content of %1; flagged as conflict, no transfer planned")
@@ -166,7 +344,51 @@ namespace SyncPreview
                 }
             }
 
-            return operation;
+            return operations;
+        }
+
+        // Blocker rows cannot transfer onto the blocked path: the arrow
+        // actions mean "transfer with automatic rename" (MEGA-2.9) — the
+        // destination-side entry occupying the path is displaced by an
+        // automatic rename (first free "name (N)[.ext]", case-insensitive),
+        // then the transfer lands on the freed path.
+        QVector<PlannedOperation> operationsForBlockerRow(const Row& row, Action action,
+                                                          const Classification& classification, QStringList& warnings)
+        {
+            QVector<PlannedOperation> operations;
+            if (action != Action::LocalToRemote && action != Action::RemoteToLocal)
+            {
+                if (action == Action::BestEffort)
+                {
+                    warnings.append(QStringLiteral("Best-effort cannot resolve a blocked row; it needs a transfer with automatic rename or exclusion"));
+                }
+                return operations;
+            }
+
+            const bool toRemote = action == Action::LocalToRemote;
+            const Entry& displaced = toRemote ? *row.remote : *row.local;
+            const Entry& transferred = toRemote ? *row.local : *row.remote;
+            const QString displacedPath = displaced.relativePath;
+            // The transfer lands at the destination side's own spelling: the
+            // local spelling for L->R uploads, the remote spelling for R->L
+            // downloads (case-collision spellings differ between the sides).
+            const QString transferPath = toRemote ? row.relativePath
+                                                  : (row.remote ? row.remote->relativePath : row.relativePath);
+            const QString displacedName =
+                freeDisplacedName(classification, !toRemote, displacedPath, displaced.isFolder());
+
+            PlannedOperation rename = renamePlannedOperation(
+                toRemote ? OperationType::RenameRemote : OperationType::RenameLocal,
+                row.relativePath, displacedPath, displacedName, displaced.isFolder());
+            operations.append(rename);
+            operations.append(plannedOperation(toRemote ? OperationType::Upload : OperationType::Download,
+                                               transferPath, transferred.isFolder()));
+
+            warnings.append(QStringLiteral("Blocked row resolved with an automatic rename: %1 %2 renamed to %3, then %4")
+                                .arg(toRemote ? QStringLiteral("remote") : QStringLiteral("local"),
+                                     displacedPath, displacedName,
+                                     toRemote ? QStringLiteral("the local content is uploaded") : QStringLiteral("the remote content is downloaded")));
+            return operations;
         }
 
         // Operation shape a single-sided directory row emits for its
@@ -347,7 +569,17 @@ namespace SyncPreview
 
             if (row.kind == RowKind::Blocker)
             {
-                rowPlan.warnings.append(QStringLiteral("Blocked row: cannot be resolved by a transfer; resolve by rename or exclusion"));
+                const QVector<PlannedOperation> operations =
+                    operationsForBlockerRow(row, effective.at(i).action, classification, rowPlan.warnings);
+                if (operations.isEmpty())
+                {
+                    rowPlan.warnings.append(QStringLiteral("Blocked row: cannot be resolved by a plain transfer; the arrow actions transfer with an automatic rename"));
+                }
+                for (const PlannedOperation& operation : operations)
+                {
+                    rowPlan.operations.append(operation);
+                    addConsequence(rowPlan, operation);
+                }
                 continue;
             }
             if (!isFileRow(row) || row.kind == RowKind::Identical)
@@ -368,16 +600,55 @@ namespace SyncPreview
                 }
             }
 
-            const PlannedOperation operation = operationForFileRow(row, effective.at(i).action, rowPlan.warnings);
-            if (operation.type != OperationType::None)
+            const QVector<PlannedOperation> operations =
+                operationsForFileRow(row, effective.at(i).action, classification, rowPlan.warnings);
+            for (const PlannedOperation& operation : operations)
             {
                 rowPlan.operations.append(operation);
-                addConsequence(rowPlan, operation.type, operation.path);
+                addConsequence(rowPlan, operation);
                 if (row.underBlockedPath)
                 {
                     rowPlan.warnings.append(QStringLiteral("%1 sits under a path blocked by a type mismatch; the sync engine may stall this transfer")
                                                 .arg(operation.path));
                 }
+            }
+        }
+
+        // Twin coupling (MEGA-2.9): an adopt rename on one row moves the
+        // entry another row holds, so that row is covered by the adopt.
+        // Rows are processed in classification order, so when both twins
+        // carry explicit decisions the earlier (local-side) row's adopt
+        // wins and the later row is superseded.
+        for (int i = 0; i < classificationRows.size(); ++i)
+        {
+            for (const PlannedOperation& operation : plan.rows.at(i).operations)
+            {
+                if (!isRename(operation.type) || operation.fromPath == plan.rows.at(i).relativePath)
+                {
+                    continue;  // displacement renames act on the row's own entry
+                }
+                const auto twinIt = rowByPath.constFind(operation.fromPath);
+                if (twinIt == rowByPath.constEnd() || twinIt.value() == i)
+                {
+                    continue;
+                }
+
+                RowPlan& twinPlan = plan.rows[twinIt.value()];
+                if (twinPlan.actionSource == ActionSource::OwnDecision)
+                {
+                    twinPlan.warnings.append(QStringLiteral("Superseded by %1's rename: its content moves with the adopt")
+                                                .arg(plan.rows.at(i).relativePath));
+                }
+                twinPlan.operations.clear();
+                twinPlan.createdLocal.clear();
+                twinPlan.changedLocal.clear();
+                twinPlan.removedLocal.clear();
+                twinPlan.createdRemote.clear();
+                twinPlan.changedRemote.clear();
+                twinPlan.removedRemote.clear();
+                twinPlan.renamedLocal.clear();
+                twinPlan.renamedRemote.clear();
+                twinPlan.coveredByPath = plan.rows.at(i).relativePath;
             }
         }
 
@@ -460,7 +731,7 @@ namespace SyncPreview
                             if (otherPlan.coveredByPath == dirPath && isFileRow(other))
                             {
                                 rowPlan.createdRemote.append(other.relativePath);
-                                if (other.kind == RowKind::Conflict && !other.twinPath.isEmpty())
+                                if (!other.twinPath.isEmpty() && other.kind != RowKind::Identical)
                                 {
                                     rowPlan.warnings.append(QStringLiteral("Uploading %1 duplicates identical content already on the remote side at %2")
                                                                 .arg(other.relativePath, other.twinPath));
@@ -471,7 +742,7 @@ namespace SyncPreview
                             if (otherPlan.coveredByPath == dirPath && isFileRow(other))
                             {
                                 rowPlan.createdLocal.append(other.relativePath);
-                                if (other.kind == RowKind::Conflict && !other.twinPath.isEmpty())
+                                if (!other.twinPath.isEmpty() && other.kind != RowKind::Identical)
                                 {
                                     rowPlan.warnings.append(QStringLiteral("Downloading %1 duplicates identical content already on the local side at %2")
                                                                 .arg(other.relativePath, other.twinPath));
@@ -488,6 +759,8 @@ namespace SyncPreview
                             break;
                         case OperationType::UploadReplace:
                         case OperationType::DownloadReplace:
+                        case OperationType::RenameRemote:
+                        case OperationType::RenameLocal:
                         case OperationType::None:
                             break;
                     }
@@ -503,6 +776,8 @@ namespace SyncPreview
                     rowPlan.createdRemote += otherPlan.createdRemote;
                     rowPlan.changedRemote += otherPlan.changedRemote;
                     rowPlan.removedRemote += otherPlan.removedRemote;
+                    rowPlan.renamedLocal += otherPlan.renamedLocal;
+                    rowPlan.renamedRemote += otherPlan.renamedRemote;
                     rowPlan.warnings += otherPlan.warnings;
                 }
 
@@ -527,7 +802,7 @@ namespace SyncPreview
                 // The folder itself is created/placed (subtree transfers),
                 // or goes away with the subtree (deletions), or is
                 // created/placed alone (node-only ops).
-                addConsequence(rowPlan, ownOperation.type, ownOperation.path);
+                addConsequence(rowPlan, ownOperation);
             }
         }
 

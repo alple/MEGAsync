@@ -8789,6 +8789,69 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
 </context>
 <context>
+    <name>SyncPreview::SyncPreviewChangesDialog</name>
+    <message>
+        <source>created on MEGA (upload)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>overwritten on MEGA (previous copy recoverable)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>created locally (download)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>overwritten locally (previous copy recoverable)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>moved to MEGA Rubbish</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>moved to the OS trash</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> (folder, includes contents)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scheduled changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scheduled changes for &lt;b&gt;%1&lt;/b&gt;:</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Scheduled change</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1: %2 → %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>renamed on MEGA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>renamed locally</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>No scheduled changes under the current decisions.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>SyncPreview::SyncPreviewConsequencesDialog</name>
     <message>
         <source>Consequences of the directory action</source>
@@ -8921,6 +8984,14 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <source>pending: %1</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Show changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lists the changes scheduled under the current decisions (renames included)</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SyncPreview::SyncPreviewFakePairPicker</name>
@@ -8953,10 +9024,6 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
     <message>
         <source>Under a blocked path: resolve the blocker above first</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Not resolvable by a transfer: needs rename/exclusion (later stage)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9000,7 +9067,23 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>arrives in a later stage</source>
+        <source>Local twin of the remote content: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An arrow action transfers by renaming the identical twin to this name, without a duplicate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An arrow action transfers with an automatic rename; “do nothing” leaves it blocked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>displaces the conflicting entry with an automatic rename</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>a merge cannot resolve a blocked row</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -9127,6 +9210,22 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
     <message>
         <source>Leave this row unresolved (nothing transfers)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Show changes</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Lists the changes scheduled under the current decisions (renames included)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Apply</source>
+        <translation type="unfinished">Apply</translation>
+    </message>
+    <message>
+        <source>Executes the scheduled changes on the fake data and re-resolves the panes (review loop, no real transfer)</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

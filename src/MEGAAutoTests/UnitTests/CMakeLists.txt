@@ -44,6 +44,7 @@ set(UNIT_TEST_FILES
     sync_preview/FakeSyncPreviewProviderTests.cpp
     sync_preview/SyncPreviewClassifierTests.cpp
     sync_preview/SyncPreviewDemoTests.cpp
+    sync_preview/SyncPreviewFakeApplierTests.cpp
     sync_preview/SyncPreviewPlannerTests.cpp
     sync_preview/SyncPreviewQueueStoreTests.cpp
     sync_preview/SyncPreviewQueueFileStoreTests.cpp

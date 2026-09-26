@@ -82,6 +82,12 @@ namespace
             case OperationType::DeleteLocalToTrash:
                 name = QStringLiteral("delete-local (-> trash)");
                 break;
+            case OperationType::RenameRemote:
+                name = QStringLiteral("rename-remote %1 -> %2").arg(operation.fromPath, operation.toPath);
+                break;
+            case OperationType::RenameLocal:
+                name = QStringLiteral("rename-local %1 -> %2").arg(operation.fromPath, operation.toPath);
+                break;
             case OperationType::None:
                 return QStringLiteral("-");
         }

@@ -251,3 +251,85 @@ TEST_CASE("Identical deep trees classify entirely as identical")
         CHECK_FALSE(row.requiresApproval);
     }
 }
+
+TEST_CASE("Paired rows gain advisory twins in both directions (MEGA-2.9)")
+{
+    const Classification classification = classify(FakeScenarios::renameChain());
+
+    // The paired foo.txt row differs on both sides and finds same-content
+    // counterparts on both: bar.txt remotely (its local content), foo2.txt
+    // locally (its remote content).
+    const Row* foo = findRow(classification, QStringLiteral("foo.txt"));
+    REQUIRE(foo != nullptr);
+    CHECK(foo->kind == RowKind::BothDiffer);
+    CHECK(foo->hasIdenticalTwin);
+    CHECK(foo->twinPath == QStringLiteral("bar.txt"));
+    CHECK(foo->localTwinPath == QStringLiteral("foo2.txt"));
+
+    const Row* bar = findRow(classification, QStringLiteral("bar.txt"));
+    REQUIRE(bar != nullptr);
+    CHECK(bar->kind == RowKind::RemoteOnly);
+    CHECK(bar->hasIdenticalTwin);
+    CHECK(bar->twinPath == QStringLiteral("foo.txt"));
+    CHECK_FALSE(bar->requiresApproval);
+    CHECK(bar->localTwinPath.isEmpty());
+
+    const Row* foo2 = findRow(classification, QStringLiteral("foo2.txt"));
+    REQUIRE(foo2 != nullptr);
+    CHECK(foo2->kind == RowKind::LocalOnly);
+    CHECK(foo2->hasIdenticalTwin);
+    CHECK(foo2->twinPath == QStringLiteral("foo.txt"));
+    CHECK_FALSE(foo2->requiresApproval);
+}
+
+TEST_CASE("The kitchen-sink rename twin arms the modified branch")
+{
+    const Classification classification = classify(FakeScenarios::edgeCaseKitchenSink());
+
+    const Row* main = findRow(classification, QStringLiteral("projects/mega/client/src/main.cpp"));
+    REQUIRE(main != nullptr);
+    CHECK(main->kind == RowKind::BothDiffer);
+    CHECK(main->hasIdenticalTwin);
+    CHECK(main->twinPath == QStringLiteral("projects/mega/client/backup/main.cpp"));
+    CHECK(main->localTwinPath.isEmpty());
+
+    const Row* backup = findRow(classification, QStringLiteral("projects/mega/client/backup/main.cpp"));
+    REQUIRE(backup != nullptr);
+    CHECK(backup->kind == RowKind::RemoteOnly);
+    CHECK(backup->hasIdenticalTwin);
+    CHECK(backup->twinPath == QStringLiteral("projects/mega/client/src/main.cpp"));
+    CHECK_FALSE(backup->requiresApproval);
+}
+
+TEST_CASE("Rename across folders finds its twin in another folder")
+{
+    const Classification classification = classify(FakeScenarios::renameCrossFolder());
+
+    const Row* a = findRow(classification, QStringLiteral("docs/a.txt"));
+    REQUIRE(a != nullptr);
+    CHECK(a->kind == RowKind::BothDiffer);
+    CHECK(a->hasIdenticalTwin);
+    CHECK(a->twinPath == QStringLiteral("archive/a.txt"));
+}
+
+TEST_CASE("An exact-paired identical twin is not offered for adoption")
+{
+    FakeTreeBuilder localBuilder;
+    FakeTreeBuilder remoteBuilder;
+    localBuilder.addFile(QStringLiteral("a.txt"), 10, 100, "shared");
+    localBuilder.addFile(QStringLiteral("b.txt"), 10, 100, "shared");
+    remoteBuilder.addFile(QStringLiteral("a.txt"), 10, 100, "other");
+    remoteBuilder.addFile(QStringLiteral("b.txt"), 10, 100, "shared");
+    const Classification classification = classify({localBuilder.build(), remoteBuilder.build()});
+
+    // b.txt pairs exactly (identical) and consumes the only remote copy of
+    // the shared content, so a.txt gets no adopt target.
+    const Row* b = findRow(classification, QStringLiteral("b.txt"));
+    REQUIRE(b != nullptr);
+    CHECK(b->kind == RowKind::Identical);
+    const Row* a = findRow(classification, QStringLiteral("a.txt"));
+    REQUIRE(a != nullptr);
+    CHECK(a->kind == RowKind::BothDiffer);
+    CHECK_FALSE(a->hasIdenticalTwin);
+    CHECK(a->twinPath.isEmpty());
+}

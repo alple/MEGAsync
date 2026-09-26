@@ -356,7 +356,7 @@ TEST_CASE("Nested uniform directories aggregate consequences at the root decisio
     CHECK(f->coveredByPath == QStringLiteral("p"));
 }
 
-TEST_CASE("Conflict twins warned about duplicates when transferred")
+TEST_CASE("Conflict twins resolve by rename-aware adoption on the arrows")
 {
     FakeTreeBuilder localBuilder;
     FakeTreeBuilder remoteBuilder;
@@ -370,15 +370,35 @@ TEST_CASE("Conflict twins warned about duplicates when transferred")
     decisions.insert(QStringLiteral("b.txt"), Action::RemoteToLocal);
     const Plan plan = planner.plan(classification, decisions);
 
+    // The local row's arrow adopts the identical remote twin by renaming
+    // it to a.txt: no duplicate upload, no bytes transferred (MEGA-2.9).
     const RowPlan* localTwin = plan.find(QStringLiteral("a.txt"));
     REQUIRE(localTwin != nullptr);
-    REQUIRE(findOperation(*localTwin, OperationType::Upload) != nullptr);
-    CHECK(localTwin->warnings.join(QLatin1Char(' ')).contains(QStringLiteral("b.txt")));
+    REQUIRE(localTwin->operations.size() == 1);
+    CHECK(localTwin->operations.first().type == OperationType::RenameRemote);
+    CHECK(localTwin->operations.first().fromPath == QStringLiteral("b.txt"));
+    CHECK(localTwin->operations.first().toPath == QStringLiteral("a.txt"));
+    CHECK(findOperation(*localTwin, OperationType::Upload) == nullptr);
+    CHECK_FALSE(localTwin->warnings.isEmpty());
+    REQUIRE(localTwin->renamedRemote.size() == 1);
+    CHECK(localTwin->renamedRemote.first().first == QStringLiteral("b.txt"));
 
+    // The adopt consumes the twin row's entry, so the remote-side row is
+    // covered by the adopt and its own decision is superseded.
     const RowPlan* remoteTwin = plan.find(QStringLiteral("b.txt"));
     REQUIRE(remoteTwin != nullptr);
-    REQUIRE(findOperation(*remoteTwin, OperationType::Download) != nullptr);
-    CHECK(remoteTwin->warnings.join(QLatin1Char(' ')).contains(QStringLiteral("a.txt")));
+    CHECK(remoteTwin->coveredByPath == QStringLiteral("a.txt"));
+    CHECK(remoteTwin->operations.isEmpty());
+    CHECK_FALSE(remoteTwin->warnings.isEmpty());
+
+    // Best-effort keeps the plain transfer and its duplicate warning.
+    decisions.clear();
+    decisions.insert(QStringLiteral("a.txt"), Action::BestEffort);
+    const Plan bestEffortPlan = planner.plan(classification, decisions);
+    const RowPlan* bestEffort = bestEffortPlan.find(QStringLiteral("a.txt"));
+    REQUIRE(bestEffort != nullptr);
+    REQUIRE(findOperation(*bestEffort, OperationType::Upload) != nullptr);
+    CHECK(bestEffort->warnings.join(QLatin1Char(' ')).contains(QStringLiteral("b.txt")));
 }
 
 TEST_CASE("Directory transfer over a conflict twin warns about the duplicate")
@@ -463,4 +483,260 @@ TEST_CASE("Empty classification produces an empty plan")
 
     CHECK(plan.rows.isEmpty());
     CHECK(plan.find(QStringLiteral("anything")) == nullptr);
+}
+
+TEST_CASE("Rename-swap row resolves L->R with the rename-aware exchange")
+{
+    const Classification classification = classify(FakeScenarios::renameSwap());
+    const Planner planner;
+
+    // Pass D flags both the paired row and the leftover with the advisory
+    // twin; the leftover stays a plain RemoteOnly row (no approval).
+    const Row* fooRow = classification.find(QStringLiteral("foo.txt"));
+    REQUIRE(fooRow != nullptr);
+    CHECK(fooRow->kind == RowKind::BothDiffer);
+    CHECK(fooRow->hasIdenticalTwin);
+    CHECK(fooRow->twinPath == QStringLiteral("bar.txt"));
+    const Row* barRow = classification.find(QStringLiteral("bar.txt"));
+    REQUIRE(barRow != nullptr);
+    CHECK(barRow->kind == RowKind::RemoteOnly);
+    CHECK(barRow->hasIdenticalTwin);
+    CHECK(barRow->twinPath == QStringLiteral("foo.txt"));
+    CHECK_FALSE(barRow->requiresApproval);
+
+    QHash<QString, Action> decisions;
+    decisions.insert(QStringLiteral("foo.txt"), Action::LocalToRemote);
+    const Plan swapPlan = planner.plan(classification, decisions);
+    const RowPlan* foo = swapPlan.find(QStringLiteral("foo.txt"));
+    REQUIRE(foo != nullptr);
+
+    // Displacement first (the remote edit moves into the twin's vacated
+    // name), then the adoption at the canonical path: a rename-aware swap,
+    // no UploadReplace that would destroy content.
+    REQUIRE(foo->operations.size() == 2);
+    CHECK(foo->operations.first().type == OperationType::RenameRemote);
+    CHECK(foo->operations.first().fromPath == QStringLiteral("foo.txt"));
+    CHECK(foo->operations.first().toPath == QStringLiteral("bar.txt"));
+    CHECK(foo->operations.last().type == OperationType::RenameRemote);
+    CHECK(foo->operations.last().fromPath == QStringLiteral("bar.txt"));
+    CHECK(foo->operations.last().toPath == QStringLiteral("foo.txt"));
+    CHECK(findOperation(*foo, OperationType::UploadReplace) == nullptr);
+    REQUIRE(foo->renamedRemote.size() == 2);
+    CHECK_FALSE(foo->warnings.isEmpty());
+
+    // The leftover row's entry moves with the swap: it is covered.
+    const RowPlan* bar = swapPlan.find(QStringLiteral("bar.txt"));
+    REQUIRE(bar != nullptr);
+    CHECK(bar->coveredByPath == QStringLiteral("foo.txt"));
+    CHECK(bar->operations.isEmpty());
+
+    // R->L has no local counterpart to adopt: the plain replace stands.
+    decisions.clear();
+    decisions.insert(QStringLiteral("foo.txt"), Action::RemoteToLocal);
+    const Plan reversePlan = planner.plan(classification, decisions);
+    const RowPlan* reverse = reversePlan.find(QStringLiteral("foo.txt"));
+    REQUIRE(reverse != nullptr);
+    REQUIRE(reverse->operations.size() == 1);
+    CHECK(reverse->operations.first().type == OperationType::DownloadReplace);
+}
+
+TEST_CASE("Double rename arms both adopt directions on the paired row")
+{
+    const Classification classification = classify(FakeScenarios::renameChain());
+
+    const Row* foo = classification.find(QStringLiteral("foo.txt"));
+    REQUIRE(foo != nullptr);
+    CHECK(foo->twinPath == QStringLiteral("bar.txt"));
+    CHECK(foo->localTwinPath == QStringLiteral("foo2.txt"));
+
+    const Planner planner;
+    QHash<QString, Action> decisions;
+    decisions.insert(QStringLiteral("foo.txt"), Action::RemoteToLocal);
+    const Plan reversePlan = planner.plan(classification, decisions);
+    const RowPlan* reverse = reversePlan.find(QStringLiteral("foo.txt"));
+    REQUIRE(reverse != nullptr);
+
+    // R->L adopts the local twin: the displaced local entry (whose content
+    // is unique locally) moves into the vacated twin name, then the twin
+    // content lands at foo.txt.
+    REQUIRE(reverse->operations.size() == 2);
+    CHECK(reverse->operations.first().type == OperationType::RenameLocal);
+    CHECK(reverse->operations.first().fromPath == QStringLiteral("foo.txt"));
+    CHECK(reverse->operations.first().toPath == QStringLiteral("foo2.txt"));
+    CHECK(reverse->operations.last().type == OperationType::RenameLocal);
+    CHECK(reverse->operations.last().fromPath == QStringLiteral("foo2.txt"));
+    CHECK(reverse->operations.last().toPath == QStringLiteral("foo.txt"));
+    CHECK(findOperation(*reverse, OperationType::DownloadReplace) == nullptr);
+}
+
+TEST_CASE("Rename plus edit with no counterpart plans the plain replace with an advisory")
+{
+    const Classification classification = classify(FakeScenarios::renameEdit());
+    const Planner planner;
+
+    // Three distinct contents, no identical counterpart anywhere: no twin
+    // flags, so no rename-aware resolution is offered.
+    const Row* foo = classification.find(QStringLiteral("foo.txt"));
+    REQUIRE(foo != nullptr);
+    CHECK_FALSE(foo->hasIdenticalTwin);
+    CHECK(foo->twinPath.isEmpty());
+    CHECK(foo->localTwinPath.isEmpty());
+    const Row* bar = classification.find(QStringLiteral("bar.txt"));
+    REQUIRE(bar != nullptr);
+    CHECK(bar->kind == RowKind::RemoteOnly);
+    CHECK_FALSE(bar->hasIdenticalTwin);
+
+    QHash<QString, Action> decisions;
+    decisions.insert(QStringLiteral("foo.txt"), Action::LocalToRemote);
+    const Plan fooPlan = planner.plan(classification, decisions);
+    const RowPlan* fooPlanRow = fooPlan.find(QStringLiteral("foo.txt"));
+    REQUIRE(fooPlanRow != nullptr);
+    REQUIRE(fooPlanRow->operations.size() == 1);
+    CHECK(fooPlanRow->operations.first().type == OperationType::UploadReplace);
+    // The replaced remote content is the only copy on the remote side.
+    CHECK(fooPlanRow->warnings.join(QLatin1Char(' ')).contains(QStringLiteral("not preserved")));
+}
+
+TEST_CASE("Case-collision blocker decides with displacement plus transfer")
+{
+    const Classification classification = classify(FakeScenarios::edgeCaseKitchenSink());
+    const Planner planner;
+
+    QHash<QString, Action> decisions;
+    decisions.insert(QStringLiteral("notes/A.txt"), Action::LocalToRemote);
+    const Plan uploadPlan = planner.plan(classification, decisions);
+    const RowPlan* upload = uploadPlan.find(QStringLiteral("notes/A.txt"));
+    REQUIRE(upload != nullptr);
+
+    // L->R displaces the colliding remote spelling (first free
+    // case-insensitive name), then uploads the local content.
+    REQUIRE(upload->operations.size() == 2);
+    CHECK(upload->operations.first().type == OperationType::RenameRemote);
+    CHECK(upload->operations.first().fromPath == QStringLiteral("notes/a.txt"));
+    CHECK(upload->operations.first().toPath == QStringLiteral("notes/a (1).txt"));
+    CHECK(upload->operations.last().type == OperationType::Upload);
+    CHECK(upload->operations.last().path == QStringLiteral("notes/A.txt"));
+    REQUIRE(upload->renamedRemote.size() == 1);
+    CHECK(containsPath(upload->createdRemote, QStringLiteral("notes/A.txt")));
+    CHECK_FALSE(upload->warnings.isEmpty());
+
+    decisions.clear();
+    decisions.insert(QStringLiteral("notes/A.txt"), Action::RemoteToLocal);
+    const Plan downloadPlan = planner.plan(classification, decisions);
+    const RowPlan* download = downloadPlan.find(QStringLiteral("notes/A.txt"));
+    REQUIRE(download != nullptr);
+
+    // R->L displaces the local spelling and downloads the remote content
+    // under the remote's own spelling.
+    REQUIRE(download->operations.size() == 2);
+    CHECK(download->operations.first().type == OperationType::RenameLocal);
+    CHECK(download->operations.first().fromPath == QStringLiteral("notes/A.txt"));
+    CHECK(download->operations.first().toPath == QStringLiteral("notes/A (1).txt"));
+    CHECK(download->operations.last().type == OperationType::Download);
+    CHECK(download->operations.last().path == QStringLiteral("notes/a.txt"));
+
+    // Best-effort cannot resolve a blocked row.
+    decisions.clear();
+    decisions.insert(QStringLiteral("notes/A.txt"), Action::BestEffort);
+    const Plan mergePlan = planner.plan(classification, decisions);
+    const RowPlan* merge = mergePlan.find(QStringLiteral("notes/A.txt"));
+    REQUIRE(merge != nullptr);
+    CHECK(merge->operations.isEmpty());
+    CHECK_FALSE(merge->warnings.isEmpty());
+}
+
+TEST_CASE("Type-mismatch blocker displaces by rename; folder names keep their whole name")
+{
+    const Classification classification = classify(FakeScenarios::edgeCaseKitchenSink());
+    const Planner planner;
+
+    QHash<QString, Action> decisions;
+    decisions.insert(QStringLiteral("misc/notes.txt"), Action::LocalToRemote);
+    const Plan uploadPlan = planner.plan(classification, decisions);
+    const RowPlan* upload = uploadPlan.find(QStringLiteral("misc/notes.txt"));
+    REQUIRE(upload != nullptr);
+
+    // L->R renames the remote FOLDER aside (whole name, no extension
+    // split) and uploads the local file at the freed path.
+    REQUIRE(upload->operations.size() == 2);
+    CHECK(upload->operations.first().type == OperationType::RenameRemote);
+    CHECK(upload->operations.first().fromPath == QStringLiteral("misc/notes.txt"));
+    CHECK(upload->operations.first().toPath == QStringLiteral("misc/notes.txt (1)"));
+    CHECK(upload->operations.first().isFolder);
+    CHECK(upload->operations.last().type == OperationType::Upload);
+    CHECK(upload->operations.last().path == QStringLiteral("misc/notes.txt"));
+    CHECK_FALSE(upload->operations.last().isFolder);
+
+    decisions.clear();
+    decisions.insert(QStringLiteral("misc/notes.txt"), Action::RemoteToLocal);
+    const Plan downloadPlan = planner.plan(classification, decisions);
+    const RowPlan* download = downloadPlan.find(QStringLiteral("misc/notes.txt"));
+    REQUIRE(download != nullptr);
+
+    // R->L renames the local FILE aside (extension kept) and downloads the
+    // remote folder at the freed path.
+    REQUIRE(download->operations.size() == 2);
+    CHECK(download->operations.first().type == OperationType::RenameLocal);
+    CHECK(download->operations.first().fromPath == QStringLiteral("misc/notes.txt"));
+    CHECK(download->operations.first().toPath == QStringLiteral("misc/notes (1).txt"));
+    CHECK_FALSE(download->operations.first().isFolder);
+    CHECK(download->operations.last().type == OperationType::Download);
+    CHECK(download->operations.last().path == QStringLiteral("misc/notes.txt"));
+    CHECK(download->operations.last().isFolder);
+}
+
+TEST_CASE("Kitchen-sink rename twin arms the paired row's L->R adopt")
+{
+    const Classification classification = classify(FakeScenarios::edgeCaseKitchenSink());
+    const Planner planner;
+
+    const Row* main = classification.find(QStringLiteral("projects/mega/client/src/main.cpp"));
+    REQUIRE(main != nullptr);
+    CHECK(main->kind == RowKind::BothDiffer);
+    CHECK(main->hasIdenticalTwin);
+    CHECK(main->twinPath == QStringLiteral("projects/mega/client/backup/main.cpp"));
+
+    // The recommended action (remote newer -> R->L) stays a plain replace;
+    // the adopt arms only the L->R direction.
+    const Plan recommended = planner.plan(classification, {});
+    const RowPlan* recommendedMain = recommended.find(QStringLiteral("projects/mega/client/src/main.cpp"));
+    REQUIRE(recommendedMain != nullptr);
+    REQUIRE(recommendedMain->operations.size() == 1);
+    CHECK(recommendedMain->operations.first().type == OperationType::DownloadReplace);
+
+    QHash<QString, Action> decisions;
+    decisions.insert(QStringLiteral("projects/mega/client/src/main.cpp"), Action::LocalToRemote);
+    const Plan adoptPlan = planner.plan(classification, decisions);
+    const RowPlan* adopted = adoptPlan.find(QStringLiteral("projects/mega/client/src/main.cpp"));
+    REQUIRE(adopted != nullptr);
+    REQUIRE(adopted->operations.size() == 2);
+    CHECK(adopted->operations.first().type == OperationType::RenameRemote);
+    CHECK(adopted->operations.first().fromPath == QStringLiteral("projects/mega/client/src/main.cpp"));
+    CHECK(adopted->operations.first().toPath == QStringLiteral("projects/mega/client/backup/main.cpp"));
+    CHECK(adopted->operations.last().fromPath == QStringLiteral("projects/mega/client/backup/main.cpp"));
+    CHECK(adopted->operations.last().toPath == QStringLiteral("projects/mega/client/src/main.cpp"));
+}
+
+TEST_CASE("A leftover twin claimed once serves one paired row")
+{
+    FakeTreeBuilder localBuilder;
+    FakeTreeBuilder remoteBuilder;
+    // Two paired rows differ on both sides; their shared local content
+    // exists on the remote side only once (the leftover) — it can serve
+    // one paired row's adopt.
+    localBuilder.addFile(QStringLiteral("one.txt"), 10, 100, "shared");
+    localBuilder.addFile(QStringLiteral("two.txt"), 10, 100, "shared");
+    remoteBuilder.addFile(QStringLiteral("one.txt"), 10, 100, "one-remote");
+    remoteBuilder.addFile(QStringLiteral("two.txt"), 10, 100, "two-remote");
+    remoteBuilder.addFile(QStringLiteral("spare.txt"), 10, 100, "shared");
+    const Classification classification = classify({localBuilder.build(), remoteBuilder.build()});
+
+    const Row* one = classification.find(QStringLiteral("one.txt"));
+    REQUIRE(one != nullptr);
+    CHECK(one->hasIdenticalTwin);
+    CHECK(one->twinPath == QStringLiteral("spare.txt"));
+    const Row* two = classification.find(QStringLiteral("two.txt"));
+    REQUIRE(two != nullptr);
+    CHECK_FALSE(two->hasIdenticalTwin);
+    CHECK(two->twinPath.isEmpty());
 }

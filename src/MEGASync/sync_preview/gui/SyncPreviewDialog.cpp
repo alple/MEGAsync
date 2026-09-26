@@ -1,5 +1,7 @@
 #include "SyncPreviewDialog.h"
 #include "ui_SyncPreviewDialog.h"
+#include "SyncPreviewChangesDialog.h"
+#include "SyncPreviewFakeApplier.h"
 #include "SyncPreviewFakePairPicker.h"
 #include "SyncPreviewGuiStyle.h"
 #include "SyncPreviewPairController.h"
@@ -49,18 +51,29 @@ namespace SyncPreview
 
         mController = new PairController(QueueFileStore(path), this);
         // Stage 2 factory: the pair label identifies the fake scenario, so
-        // pairs restored from the queue file re-scan to the same data.
+        // pairs restored from the queue file re-scan to the same data. The
+        // scenario store seeds on first use and keeps the Apply-step
+        // mutations (MEGA-2.9 review loop) for the session.
         mController->setSideProviderFactory(
-            [](const Pair& pair) -> std::optional<PairSideProviders>
+            [this](const Pair& pair) -> std::optional<PairSideProviders>
             {
-                const std::optional<FakeScenario> scenario =
-                    SyncPreviewFakePairPicker::scenarioForLabel(pair.localPath);
-                if (!scenario)
+                FakeScenario& scenario = fakeScenarioFor(pair.localPath);
+                return PairSideProviders{std::make_shared<FakeSideProvider>(scenario.local),
+                                         std::make_shared<FakeSideProvider>(scenario.remote)};
+            });
+        // Apply step of the review loop: executes the plan on the pair's
+        // fake trees; applyPlan() then re-scans and re-verifies the pair.
+        mController->setPlanApplier(
+            [this](const QString& pairId, const Plan& plan) -> bool
+            {
+                const Pair* pair = mController->pair(pairId);
+                if (!pair)
                 {
-                    return std::nullopt;
+                    return false;
                 }
-                return PairSideProviders{std::make_shared<FakeSideProvider>(scenario->local),
-                                         std::make_shared<FakeSideProvider>(scenario->remote)};
+                FakeScenario& scenario = fakeScenarioFor(pair->localPath);
+                SyncPreview::applyPlan(scenario, plan);
+                return true;
             });
 
         connect(mUi->addPairButton, &QPushButton::clicked, this, &SyncPreviewDialog::addPair);
@@ -133,6 +146,31 @@ namespace SyncPreview
         mController->addPair(candidate);
     }
 
+    FakeScenario& SyncPreviewDialog::fakeScenarioFor(const QString& scenarioLabel)
+    {
+        auto it = mFakeScenarios.find(scenarioLabel);
+        if (it == mFakeScenarios.end())
+        {
+            it = mFakeScenarios.insert(scenarioLabel,
+                                       SyncPreviewFakePairPicker::scenarioForLabel(scenarioLabel).value_or(FakeScenario{}));
+        }
+        return it.value();
+    }
+
+    void SyncPreviewDialog::showChanges(const QString& pairId)
+    {
+        const Pair* pair = mController->pair(pairId);
+        if (!pair)
+        {
+            return;
+        }
+
+        const QString pairTitle = pair->localPath + QStringLiteral("  <->  ") + pair->remotePath;
+        SyncPreviewChangesDialog changes(pairTitle, mController->plan(pairId),
+                                         mController->awaitingApprovalPaths(pairId), this);
+        changes.exec();
+    }
+
     void SyncPreviewDialog::rebuild()
     {
         repopulate();
@@ -177,6 +215,12 @@ namespace SyncPreview
             const QString pairId = pair.id;
             connect(reviewButton, &QPushButton::clicked, this, [this, pairId]() { openPair(pairId); });
             headerLayout->addWidget(reviewButton);
+
+            auto* changesButton = new QPushButton(tr("Show changes"), rowWidget);
+            changesButton->setToolTip(tr("Lists the changes scheduled under the current decisions (renames included)"));
+            GuiStyle::styleOutlineButton(changesButton);
+            connect(changesButton, &QPushButton::clicked, this, [this, pairId]() { showChanges(pairId); });
+            headerLayout->addWidget(changesButton);
 
             auto* commitButton = new QPushButton(tr("Commit pair"), rowWidget);
             commitButton->setToolTip(tr("Opens the pre-filled create-sync dialog (Stage 5)"));

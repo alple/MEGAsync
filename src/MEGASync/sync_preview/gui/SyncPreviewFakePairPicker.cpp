@@ -11,9 +11,12 @@ namespace SyncPreview
     namespace
     {
         const QLatin1String kitchenSinkLabel("Demo: kitchen sink (all edge cases)");
+        const QLatin1String renameSwapLabel("Demo: rename swap (content moved to a new name)");
+        const QLatin1String renameChainLabel("Demo: rename chain (double rename, both directions)");
+        const QLatin1String renameEditLabel("Demo: rename + edit (no same-content counterpart)");
+        const QLatin1String renameCrossFolderLabel("Demo: rename across folders (moved copy)");
         const QLatin1String longListLabel("Demo: long list (600 rows, load-more)");
         const QLatin1String emptyPairLabel("Demo: empty pair (no differences)");
-        const QLatin1String renameSwapLabel("Demo: rename swap (content moved to a new name)");
         constexpr int longListRows = 600;
     }
 
@@ -57,6 +60,9 @@ namespace SyncPreview
     {
         return {QString(kitchenSinkLabel),
                 QString(renameSwapLabel),
+                QString(renameChainLabel),
+                QString(renameEditLabel),
+                QString(renameCrossFolderLabel),
                 QString(longListLabel),
                 QString(emptyPairLabel)};
     }
@@ -70,6 +76,18 @@ namespace SyncPreview
         if (label == renameSwapLabel)
         {
             return FakeScenarios::renameSwap();
+        }
+        if (label == renameChainLabel)
+        {
+            return FakeScenarios::renameChain();
+        }
+        if (label == renameEditLabel)
+        {
+            return FakeScenarios::renameEdit();
+        }
+        if (label == renameCrossFolderLabel)
+        {
+            return FakeScenarios::renameCrossFolder();
         }
         if (label == longListLabel)
         {

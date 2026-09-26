@@ -1,5 +1,6 @@
 #include "SyncPreviewPairDetailDialog.h"
 #include "ui_SyncPreviewPairDetailDialog.h"
+#include "SyncPreviewChangesDialog.h"
 #include "SyncPreviewGuiFormat.h"
 #include "SyncPreviewGuiStyle.h"
 #include "SyncPreviewPairController.h"
@@ -338,6 +339,12 @@ namespace SyncPreview
         GuiStyle::styleLineEdit(mUi->pathFilterEdit);
         mUi->pathFilterEdit->setMaximumWidth(360);
         GuiStyle::styleOutlineButton(mUi->closeButton);
+        // Review-loop surface (MEGA-2.9): the scheduled-changes list and
+        // the fake-data Apply step, beside the state filters.
+        GuiStyle::styleOutlineButton(mUi->showChangesButton);
+        GuiStyle::styleOutlineButton(mUi->applyButton);
+        connect(mUi->showChangesButton, &QPushButton::clicked, this, [this]() { showChanges(); });
+        connect(mUi->applyButton, &QPushButton::clicked, this, [this]() { applyPlan(); });
 
         for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
         {
@@ -827,9 +834,14 @@ namespace SyncPreview
         {
             notes << tr("Identical twin: %1").arg(row.twinPath);
         }
+        if (!row.localTwinPath.isEmpty())
+        {
+            notes << tr("Local twin of the remote content: %1").arg(row.localTwinPath);
+        }
         if (row.kind == RowKind::Conflict)
         {
             notes << tr("Same content, different name — needs approval");
+            notes << tr("An arrow action transfers by renaming the identical twin to this name, without a duplicate");
         }
         if (row.underBlockedPath)
         {
@@ -840,7 +852,7 @@ namespace SyncPreview
             notes << (row.blockerReason == BlockerReason::TypeMismatch
                 ? tr("Blocker: file vs folder at the same path")
                 : tr("Blocker: case-insensitive name collision"));
-            notes << tr("Not resolvable by a transfer: needs rename/exclusion (later stage)");
+            notes << tr("An arrow action transfers with an automatic rename; “do nothing” leaves it blocked");
         }
         return notes.join(QLatin1Char('\n'));
     }
@@ -906,25 +918,31 @@ namespace SyncPreview
         const RowPlan* rowPlan = plan.find(row->relativePath);
         const Action effective = rowPlan ? rowPlan->action : row->recommendedAction;
         const QVector<Action>& choices = actionChoices();
-        // Blocker rows cannot transfer (a transfer would stall on them):
-        // only "Do nothing" stays clickable there, with the rename/exclusion
-        // resolution spelled out in the notes. Transfer buttons stay visible
-        // but disabled — readable, with the later-stage explanation.
-        const bool transferable = row->kind != RowKind::Blocker;
+        // Rename-aware decidability (MEGA-2.9): the arrow actions decide on
+        // conflict and blocker rows alike — they mean "transfer with an
+        // automatic rename". On blocker rows only best-effort stays out
+        // (a merge cannot fix a structural collision); "Do nothing" is
+        // always the no-op state.
+        const bool isBlocker = row->kind == RowKind::Blocker;
         for (int i = 0; i < mActionButtons.size() && i < choices.size(); ++i)
         {
             const QSignalBlocker blocker(mActionButtons[i]);
             const Action choice = choices.at(i);
-            mActionButtons[i]->setEnabled(transferable || choice == Action::None);
+            const bool decidable = !isBlocker || choice != Action::BestEffort;
+            mActionButtons[i]->setEnabled(decidable);
             mActionButtons[i]->setChecked(choice == effective);
             QString tip = actionTooltip(choice);
             if (choice == row->recommendedAction)
             {
                 tip += QStringLiteral(" — ") + tr("recommended");
             }
-            if (!transferable && choice != Action::None)
+            if (isBlocker && (choice == Action::LocalToRemote || choice == Action::RemoteToLocal))
             {
-                tip += QStringLiteral(" — ") + tr("arrives in a later stage");
+                tip += QStringLiteral(" — ") + tr("displaces the conflicting entry with an automatic rename");
+            }
+            if (!decidable)
+            {
+                tip += QStringLiteral(" — ") + tr("a merge cannot resolve a blocked row");
             }
             mActionButtons[i]->setToolTip(tip);
         }
@@ -955,6 +973,11 @@ namespace SyncPreview
         if (!tooltipNotes.isEmpty())
         {
             notes << tooltipNotes;
+        }
+        // A decided blocker spells out its automatic rename in the plan.
+        if (row->kind == RowKind::Blocker && rowPlan && !rowPlan->operations.isEmpty())
+        {
+            notes << rowPlan->warnings;
         }
         const bool severe = row->kind == RowKind::Blocker || row->kind == RowKind::Conflict ||
             row->underBlockedPath;
@@ -1006,5 +1029,29 @@ namespace SyncPreview
     void SyncPreviewPairDetailDialog::onRowApprovalToggled(const QString& relativePath, bool approved)
     {
         mController->setApproved(mPairId, relativePath, approved);
+    }
+
+    void SyncPreviewPairDetailDialog::showChanges()
+    {
+        const Pair* pair = mController->pair(mPairId);
+        if (!pair)
+        {
+            return;
+        }
+
+        const QString pairTitle = pair->localPath + QStringLiteral("  <->  ") + pair->remotePath;
+        SyncPreviewChangesDialog changes(pairTitle, mController->plan(mPairId),
+                                         mController->awaitingApprovalPaths(mPairId), this);
+        changes.exec();
+    }
+
+    void SyncPreviewPairDetailDialog::applyPlan()
+    {
+        // The review loop's Apply step (fake data): the controller applies
+        // the plan, re-scans and re-verifies; pairChanged rebuilds the
+        // panes, so applied rows vanish or turn Same. No approval gate —
+        // undecided flagged rows contribute no operations. No real API
+        // calls happen here (the applier mutates the fake trees only).
+        mController->applyPlan(mPairId);
     }
 }

@@ -1,9 +1,10 @@
 ---
 id: MEGA-2
 title: 'Sync pre-commit review: diff, conflict resolution, then create syncs'
-status: To Do
+status: Testing
 assignee: []
 created_date: '2026-09-24 11:28'
+updated_date: '2026-09-25 20:00'
 labels:
   - sync-preview
 milestone: Sync pre-commit review

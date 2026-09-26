@@ -91,6 +91,14 @@ namespace SyncPreview
         remoteBuilder.addFile(QStringLiteral("photos/img1.png"), 300, 2500, "img1-remote");
         remoteBuilder.addFile(QStringLiteral("photos/img2.png"), 450, 2100, "img2-remote");
 
+        // Nested rename twin (MEGA-2.9): the remote keeps a backup copy of
+        // the local main.cpp content under a different name, so the
+        // modified src/main.cpp row carries an identical-content remote
+        // counterpart. Added before the twins so the remote-leftover tail
+        // order stays stable.
+        remoteBuilder.addFolder(QStringLiteral("projects/mega/client/backup"));
+        remoteBuilder.addFile(QStringLiteral("projects/mega/client/backup/main.cpp"), 500, 3000, "main-local");
+
         // Same content, different names (conflict twins).
         localBuilder.addFolder(QStringLiteral("archive"));
         localBuilder.addFile(QStringLiteral("archive/a.txt"), 50, 500, "twin");
@@ -144,13 +152,70 @@ namespace SyncPreview
         FakeTreeBuilder remoteBuilder;
 
         // The rename-swap trap: remote renamed foo.txt to bar.txt (the old
-        // content survives under the new name) while local edited foo.txt.
-        // A naive L->R transfer overwrites the remote edit with content the
-        // remote already keeps under bar.txt; the honest resolution is a
-        // rename-aware swap (later stage).
+        // content survives under the new name) while remote foo.txt holds
+        // new content. A naive L->R transfer would overwrite the remote
+        // edit with content the remote already keeps under bar.txt; the
+        // honest resolution is the rename-aware swap.
         localBuilder.addFile(QStringLiteral("foo.txt"), 100, 1000, "hash_1");
         remoteBuilder.addFile(QStringLiteral("foo.txt"), 200, 2000, "hash_2");
         remoteBuilder.addFile(QStringLiteral("bar.txt"), 100, 1000, "hash_1");
+
+        return {localBuilder.build(), remoteBuilder.build()};
+    }
+
+    FakeScenario FakeScenarios::renameChain()
+    {
+        FakeTreeBuilder localBuilder;
+        FakeTreeBuilder remoteBuilder;
+
+        // Double rename on the remote side: foo.txt -> bar.txt and
+        // foo2.txt -> foo.txt. The paired foo.txt row differs on both
+        // sides and finds same-content counterparts in BOTH directions:
+        // its local content sits remotely at bar.txt (L->R adopt), its
+        // remote content sits locally at foo2.txt (R->L adopt).
+        localBuilder.addFile(QStringLiteral("foo.txt"), 100, 1000, "hash_1");
+        localBuilder.addFile(QStringLiteral("foo2.txt"), 50, 1100, "hash_2");
+        remoteBuilder.addFile(QStringLiteral("foo.txt"), 50, 1100, "hash_2");
+        remoteBuilder.addFile(QStringLiteral("bar.txt"), 100, 1000, "hash_1");
+
+        return {localBuilder.build(), remoteBuilder.build()};
+    }
+
+    FakeScenario FakeScenarios::renameEdit()
+    {
+        FakeTreeBuilder localBuilder;
+        FakeTreeBuilder remoteBuilder;
+
+        // Rename + edit: remote renamed the original foo.txt (hash_1) to
+        // bar.txt and created a different foo.txt (hash_2); local edited
+        // foo.txt (hash_1e). Three distinct contents with no identical
+        // counterpart for the local edit: no rename-aware resolution
+        // applies, so a transfer is the plain recoverable replace (with
+        // the unique-content advisory when the replaced side keeps the
+        // only copy).
+        localBuilder.addFile(QStringLiteral("foo.txt"), 120, 1500, "hash_1e");
+        remoteBuilder.addFile(QStringLiteral("foo.txt"), 200, 2000, "hash_2");
+        remoteBuilder.addFile(QStringLiteral("bar.txt"), 100, 1000, "hash_1");
+
+        return {localBuilder.build(), remoteBuilder.build()};
+    }
+
+    FakeScenario FakeScenarios::renameCrossFolder()
+    {
+        FakeTreeBuilder localBuilder;
+        FakeTreeBuilder remoteBuilder;
+
+        // Rename across folders: remote moved docs/a.txt to archive/a.txt
+        // (the old content under the new name) and replaced docs/a.txt
+        // with new content; local kept docs/a.txt. The paired row's twin
+        // sits in another folder, so the rename-aware swap moves content
+        // across folders.
+        localBuilder.addFolder(QStringLiteral("docs"));
+        localBuilder.addFile(QStringLiteral("docs/a.txt"), 100, 1000, "hash_1");
+        remoteBuilder.addFolder(QStringLiteral("docs"));
+        remoteBuilder.addFile(QStringLiteral("docs/a.txt"), 150, 2000, "hash_2");
+        remoteBuilder.addFolder(QStringLiteral("archive"));
+        remoteBuilder.addFile(QStringLiteral("archive/a.txt"), 100, 1000, "hash_1");
 
         return {localBuilder.build(), remoteBuilder.build()};
     }

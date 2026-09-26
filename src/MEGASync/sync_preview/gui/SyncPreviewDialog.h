@@ -1,11 +1,13 @@
 #ifndef SYNCPREVIEWDIALOG_H
 #define SYNCPREVIEWDIALOG_H
 
+#include "FakeSyncPreviewProvider.h"
 #include "SyncPreviewQueue.h"
 
 #include <QDialog>
 #include <QHash>
 #include <QPointer>
+#include <QString>
 
 #include <memory>
 
@@ -50,11 +52,20 @@ namespace SyncPreview
         bool pairVisible(const Pair& pair, const QString& filter) const;
         void updateSummary();
         void applyListPalette();
+        void showChanges(const QString& pairId);
+        // The pair's mutable fake trees (MEGA-2.9 review loop): the store
+        // seeds from the canned scenario on first use and carries the
+        // Apply-step mutations for the session; on reopen the queue
+        // re-scans to the original scenario and the Reconciler re-flags.
+        FakeScenario& fakeScenarioFor(const QString& scenarioLabel);
 
         std::unique_ptr<Ui::SyncPreviewDialog> mUi;
         PairController* mController = nullptr;
         // One detail window per pair; QPointer nulls itself on destroy.
         QHash<QString, QPointer<QDialog>> mDetailWindows;
+        // Session-only fake data store, keyed by the pair label (the fake
+        // pair's local path doubles as the label).
+        QHash<QString, FakeScenario> mFakeScenarios;
     };
 }
 #endif // SYNCPREVIEWDIALOG_H

@@ -5,6 +5,7 @@
 #include "SyncPreviewDefs.h"
 
 #include <QHash>
+#include <QPair>
 #include <QStringList>
 
 namespace SyncPreview
@@ -18,13 +19,17 @@ namespace SyncPreview
 
     // One planned operation. Folder-scoped ops carry the folder path; the
     // enforcement engine (Stage 4) expands subtree ops and the replace ops
-    // into the verified primitive sequences.
+    // into the verified primitive sequences. Rename ops (MEGA-2.9) carry
+    // fromPath -> toPath; `path` stays the row path the decision was made
+    // on.
     struct PlannedOperation
     {
         OperationType type = OperationType::None;
         QString path;
         bool isFolder = false;
         bool isSubtree = false;  // folder op covering the whole subtree
+        QString fromPath;        // rename ops: moved path
+        QString toPath;          // rename ops: destination path
     };
 
     // Consequences for one row. File rows list their own effects (or
@@ -47,6 +52,11 @@ namespace SyncPreview
         QStringList createdRemote;
         QStringList changedRemote;  // content overwritten (old copy to Rubbish)
         QStringList removedRemote;  // moved to MEGA Rubbish
+        // Rename consequences (MEGA-2.9): moved paths as (from, to) pairs.
+        // Renames transfer no bytes and remove nothing, so the pending
+        // summary ignores them.
+        QVector<QPair<QString, QString>> renamedLocal;
+        QVector<QPair<QString, QString>> renamedRemote;
         QStringList warnings;       // advisory notes: duplicates, blocked paths, structural overrides
     };
 
