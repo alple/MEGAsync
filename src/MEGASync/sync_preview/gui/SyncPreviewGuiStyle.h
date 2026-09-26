@@ -97,26 +97,6 @@ namespace SyncPreview
                      token(QLatin1String("text-secondary")).name());
         }
 
-        // The approval toggle lights up in the success color when checked.
-        inline QString approveButtonStyleSheet()
-        {
-            return QStringLiteral(
-                "QPushButton {"
-                " background: transparent;"
-                " border: 1px solid %1;"
-                " border-radius: 4px;"
-                " padding: 4px 14px;"
-                " color: %2;"
-                " }"
-                "QPushButton:hover { border-color: %3; }"
-                "QPushButton:checked { background: %3; color: %4; border-color: %3; }"
-                "QPushButton:disabled { color: %5; border-color: %1; }")
-                .arg(token(QLatin1String("border-strong")).name(),
-                     token(QLatin1String("text-primary")).name(),
-                     token(QLatin1String("text-success")).name(),
-                     token(QLatin1String("page-background")).name(),
-                     token(QLatin1String("text-secondary")).name());
-        }
     }
 }
 #endif // SYNCPREVIEWGUISTYLE_H

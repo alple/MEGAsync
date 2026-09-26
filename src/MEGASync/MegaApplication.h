@@ -496,6 +496,9 @@ protected:
     // Armed once per app run; a timeout retry loop bursts, hence the hard latch.
     bool mCsHeartbeatTimeoutReported = false;
     bool mScHeartbeatTimeoutReported = false;
+    // Fork-only dev flag (--sync-preview, MEGA-2.11): opens the sync
+    // pre-commit review window once startup settles. Opt-in only.
+    bool mAutoOpenSyncPreview = false;
     LoginController* mLoginController;
     friend class DeferPreferencesSyncForScope;
     std::shared_ptr<TransferQuota> mTransferQuota;

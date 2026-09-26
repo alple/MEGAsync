@@ -209,6 +209,10 @@ MegaApplication::MegaApplication(int& argc, char** argv):
 
 #endif
 
+    // Fork-only dev flag (see start()): opens the sync pre-commit review
+    // window automatically after startup. Opt-in; prod ignores it.
+    mAutoOpenSyncPreview = args.contains(QLatin1String("--sync-preview"));
+
 #ifdef _WIN32
     connect(this, SIGNAL(screenAdded(QScreen*)), this, SLOT(changeDisplay(QScreen*)));
     connect(this, SIGNAL(screenRemoved(QScreen*)), this, SLOT(changeDisplay(QScreen*)));
@@ -1393,6 +1397,17 @@ void MegaApplication::start()
         MegaApi::log(MegaApi::LOG_LEVEL_INFO,
                      "Logout diagnostics: start() requests openOnboardingDialog().");
         QmlDialogManager::instance()->openOnboardingDialog();
+    }
+
+    // Fork-only dev convenience (MEGA-2.11 AC#9): with --sync-preview the
+    // sync pre-commit review window opens by itself once startup settles.
+    // Opt-in via the flag only: without it, prod behavior is unchanged.
+    if (mAutoOpenSyncPreview)
+    {
+        QTimer::singleShot(0, this, []()
+        {
+            MegaApplication::showSyncPreviewDialog();
+        });
     }
 }
 

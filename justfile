@@ -44,5 +44,8 @@ demo-syncpreview *args:
 
 # Run the dev-built app. NOTE: uses the prod settings/data dir directly —
 # quit the installed prod MEGAsync first (single-instance lock, same data).
+# The fork-only --sync-preview flag opens the sync pre-commit review window
+# automatically once startup settles (MEGA-2.11 AC#9); drop the flag (run the
+# binary directly) for the plain app start.
 run *args:
-    {{build_dir}}/src/MEGASync/megasync {{args}}
+    {{build_dir}}/src/MEGASync/megasync --sync-preview {{args}}

@@ -168,7 +168,12 @@ namespace SyncPreview
         const QString pairTitle = pair->localPath + QStringLiteral("  <->  ") + pair->remotePath;
         SyncPreviewChangesDialog changes(pairTitle, mController->plan(pairId),
                                          mController->awaitingApprovalPaths(pairId), this);
-        changes.exec();
+        // Apply moved into the popup (MEGA-2.11 AC#7): Accepted runs the
+        // review loop's apply step for this pair.
+        if (changes.exec() == QDialog::Accepted)
+        {
+            mController->applyPlan(pairId);
+        }
     }
 
     void SyncPreviewDialog::rebuild()

@@ -66,6 +66,14 @@ namespace
         candidate.remotePath = QStringLiteral("demo-a (remote)");
         return candidate;
     }
+
+    PairCandidate candidateForLabel(const QString& label)
+    {
+        PairCandidate candidate;
+        candidate.localPath = label;
+        candidate.remotePath = label + QStringLiteral(" (remote)");
+        return candidate;
+    }
 }
 
 TEST_CASE("PairController restores an empty queue from a missing file")
@@ -387,6 +395,58 @@ TEST_CASE("Explicit do-nothing decisions stay out of the commit gate")
     CHECK(controller.awaitingApprovalPaths(pairId).size() == 1);
     controller.setApproved(pairId, QStringLiteral("old/b.txt"), true);
     CHECK(controller.allApproved(pairId));
+}
+
+TEST_CASE("The arrow gesture decides and approves flagged rows in one step (MEGA-2.11)")
+{
+    QTemporaryDir dir;
+    REQUIRE(dir.isValid());
+
+    PairController controller{QueueFileStore(dir.filePath(QStringLiteral("queue.json")))};
+    controller.setSideProviderFactory(factoryFor(QStringLiteral("demo-b"), scenarioB()));
+    controller.addPair(candidateForLabel(QStringLiteral("demo-b")));
+    const QString pairId = controller.pairs().first().id;
+
+    // docs/a.txt both-differs: it has a real recommendation (newer side
+    // wins) but is flagged — the recommendation is NOT an approval, so the
+    // gate stays closed until the reviewer clicks an arrow.
+    const Row* differ = controller.classification(pairId).find(QStringLiteral("docs/a.txt"));
+    REQUIRE(differ);
+    CHECK(differ->kind == RowKind::BothDiffer);
+    CHECK(differ->requiresApproval);
+    CHECK(differ->recommendedAction != Action::None);
+    CHECK_FALSE(controller.allApproved(pairId));
+    CHECK(controller.awaitingApprovalPaths(pairId).contains(QStringLiteral("docs/a.txt")));
+
+    // The plan still applies the recommendation while undecided (the
+    // pre-clicked visual) — planning and approval are independent.
+    const Plan undecidedPlan = controller.plan(pairId);
+    const RowPlan* differPlan = undecidedPlan.find(QStringLiteral("docs/a.txt"));
+    REQUIRE(differPlan);
+    CHECK(differPlan->action == differ->recommendedAction);
+    CHECK(differPlan->actionSource == ActionSource::Recommended);
+
+    // The click gesture: decide + approve in one step takes the row out of
+    // the gate; the docs folder row (also flagged: its subtree differs)
+    // still blocks.
+    controller.setAction(pairId, QStringLiteral("docs/a.txt"), Action::LocalToRemote);
+    controller.setApproved(pairId, QStringLiteral("docs/a.txt"), true);
+    CHECK_FALSE(controller.awaitingApprovalPaths(pairId).contains(QStringLiteral("docs/a.txt")));
+    CHECK_FALSE(controller.allApproved(pairId));
+
+    // Un-decide (the arrow toggled off): an explicit do-nothing replaces
+    // the transfer and keeps the gate open. The docs folder row is cleared
+    // the same way (its subtree differs, so it is flagged too).
+    controller.setAction(pairId, QStringLiteral("docs/a.txt"), Action::None);
+    controller.setApproved(pairId, QStringLiteral("docs/a.txt"), false);
+    controller.setAction(pairId, QStringLiteral("docs"), Action::None);
+    CHECK(controller.allApproved(pairId));
+    const Plan clearedPlan = controller.plan(pairId);
+    const RowPlan* cleared = clearedPlan.find(QStringLiteral("docs/a.txt"));
+    REQUIRE(cleared);
+    CHECK(cleared->action == Action::None);
+    CHECK(cleared->actionSource == ActionSource::OwnDecision);
+    CHECK(cleared->operations.isEmpty());
 }
 
 TEST_CASE("applyPlan mutates the fake data and re-verifies the pair")

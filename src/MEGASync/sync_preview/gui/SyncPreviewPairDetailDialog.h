@@ -56,7 +56,6 @@ namespace SyncPreview
     private slots:
         void rebuild();
         void onRowActionSelected(const QString& relativePath, Action action);
-        void onRowApprovalToggled(const QString& relativePath, bool approved);
 
     private:
         void setupPanes();
@@ -64,6 +63,10 @@ namespace SyncPreview
         void applyPanesPalette();
         void repopulate();
         void updateActionPanel();
+        // The arrows decide AND approve in one gesture (MEGA-2.11 AC#8);
+        // toggling the active arrow off records an explicit do-nothing.
+        void onActionButtonClicked(Action choice, bool checked);
+        void onRowDecisionCleared(const QString& relativePath);
         // Review-loop surface (MEGA-2.9): the scheduled-changes list and
         // the fake-data Apply step (controller re-scans + re-verifies; the
         // pairChanged signal drives the rebuild).
@@ -102,19 +105,29 @@ namespace SyncPreview
         // what keeps expansion/selection/scrolling in path lock-step.
         QHash<QString, QTreeWidgetItem*> mLeftItems;
         QHash<QString, QTreeWidgetItem*> mRightItems;
-        // Expansion survives repopulation (filter edits, decisions, themes).
+        // Expansion and selection survive repopulation (filter edits,
+        // decisions, themes). The left map is the reference; with
+        // Synchronize view OFF the right pane keeps its own expansion map
+        // and selection (MEGA-2.11 AC#6), so a rebuild never snaps a
+        // freely-browsed pane back into lock-step.
         QHash<QString, bool> mExpandedByPath;
+        QHash<QString, bool> mRightExpandedByPath;
+        QString mLeftSelectedPath;
+        QString mRightSelectedPath;
         // The path whose row the action panel shows; empty = no selection.
         QString mSelectedPath;
         bool mSyncingPanes = false;
+        // Synchronize view is a toggle (MEGA-2.11 AC#6, default ON): ON
+        // keeps the panes mirroring continuously (expansion, selection,
+        // scroll); OFF lets each pane be browsed freely (expansion is still
+        // recorded per path, so rebuilds never fight the free state).
+        bool mPanesLocked = true;
 
         // The action panel under the trees (pressable buttons, no combo).
         QFrame* mActionPanel = nullptr;
         QLabel* mPanelPathLabel = nullptr;
         QLabel* mPanelStatesLabel = nullptr;
         QVector<QPushButton*> mActionButtons;
-        QButtonGroup* mActionGroup = nullptr;
-        QPushButton* mApproveButton = nullptr;
         QLabel* mPanelHintLabel = nullptr;
         QLabel* mPanelNotesLabel = nullptr;
 

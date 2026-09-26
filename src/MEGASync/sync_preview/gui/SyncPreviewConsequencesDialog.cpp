@@ -1,5 +1,8 @@
 #include "SyncPreviewConsequencesDialog.h"
 
+#include "SyncPreviewGuiStyle.h"
+
+#include "ThemeManager.h"
 #include "TokenParserWidgetManager.h"
 
 #include <QDialogButtonBox>
@@ -39,7 +42,9 @@ namespace SyncPreview
     {
         setWindowTitle(tr("Consequences of the directory action"));
         setMinimumWidth(520);
-        setAttribute(Qt::WA_DeleteOnClose);
+        // No WA_DeleteOnClose: stack-allocated + exec()'d (see
+        // SyncPreviewChangesDialog) — the attribute would delete a stack
+        // object on close and abort the app (MEGA-2.11 AC#1).
 
         // Prod theming: the popup is exec()'d (never tracked by
         // DialogOpener), so it must register itself to receive the app's
@@ -79,5 +84,36 @@ namespace SyncPreview
         connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
         connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
         layout->addWidget(buttons);
+
+        applyPalette();
+
+        // Labels and buttons re-resolve their token colors on live theme
+        // changes, like the rest of the sync_preview windows.
+        connect(ThemeManager::instance(), &ThemeManager::themeChanged, this, [this]()
+        {
+            applyPalette();
+        });
+    }
+
+    void SyncPreviewConsequencesDialog::applyPalette()
+    {
+        auto theme = TokenParserWidgetManager::instance();
+
+        // Same read as the pair-detail window: the window (and the labels
+        // the app stylesheet leaves dark-on-dark) pinned to token colors,
+        // the buttons in the proven quiet chrome sheet.
+        GuiStyle::applyWindowPalette(this);
+
+        for (QLabel* label : findChildren<QLabel*>())
+        {
+            label->setStyleSheet(
+                QStringLiteral("QLabel { color: %1; }")
+                    .arg(theme->getColor(QLatin1String("text-primary")).name()));
+        }
+
+        for (QPushButton* button : findChildren<QPushButton*>())
+        {
+            button->setStyleSheet(GuiStyle::actionButtonStyleSheet());
+        }
     }
 }

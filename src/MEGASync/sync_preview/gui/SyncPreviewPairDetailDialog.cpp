@@ -10,7 +10,6 @@
 #include "TokenParserWidgetManager.h"
 
 #include <QBrush>
-#include <QButtonGroup>
 #include <QCheckBox>
 #include <QCoreApplication>
 #include <QFont>
@@ -183,13 +182,13 @@ namespace SyncPreview
             return true;
         }
 
-        // The action panel's pressable buttons, in a fixed order: the left
-        // pane stays on the left and the right pane on the right, so the
-        // buttons only flip the arrow (pane directions, not label words).
+        // The action panel's pressable buttons (MEGA-2.11 AC#8): the three
+        // transfer arrows. "Do nothing" is no longer a button — none clicked
+        // reads as do nothing — and approval is folded into the click.
         const QVector<Action>& actionChoices()
         {
             static const QVector<Action> choices{Action::LocalToRemote, Action::RemoteToLocal,
-                Action::BestEffort, Action::None};
+                Action::BestEffort};
             return choices;
         }
 
@@ -203,9 +202,9 @@ namespace SyncPreview
                 case Action::RemoteToLocal:
                     return QCoreApplication::translate("SyncPreviewPairDetailDialog", "←");
                 case Action::BestEffort:
-                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Best-effort");
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "↔");
                 case Action::None:
-                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Do nothing");
+                    break;
             }
             return QStringLiteral("?");
         }
@@ -232,13 +231,16 @@ namespace SyncPreview
             switch (action)
             {
                 case Action::LocalToRemote:
-                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Transfer local → remote");
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog",
+                        "Make remote like local (upload/overwrite; remote-only entries are removed from MEGA, recoverable). Clicking decides and approves in one step; click again to un-decide");
                 case Action::RemoteToLocal:
-                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Transfer remote → local");
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog",
+                        "Make local like remote (download/overwrite; local-only entries are removed locally, recoverable). Clicking decides and approves in one step; click again to un-decide");
                 case Action::BestEffort:
-                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Best-effort transfer");
+                    return QCoreApplication::translate("SyncPreviewPairDetailDialog",
+                        "Best-effort both-way merge (missing side gets the file; same-name-differ conflicts). Clicking decides and approves in one step; click again to un-decide");
                 case Action::None:
-                    return QCoreApplication::translate("SyncPreviewPairDetailDialog", "Leave this row unresolved (nothing transfers)");
+                    break;
             }
             return QString();
         }
@@ -339,20 +341,41 @@ namespace SyncPreview
         GuiStyle::styleLineEdit(mUi->pathFilterEdit);
         mUi->pathFilterEdit->setMaximumWidth(360);
         GuiStyle::styleOutlineButton(mUi->closeButton);
-        // Review-loop surface (MEGA-2.9): the scheduled-changes list and
-        // the fake-data Apply step, beside the state filters — plus the
-        // pane-view normalizer (MEGA-2.10).
+        // Review-loop surface (MEGA-2.9): the scheduled-changes list
+        // (with its Apply step inside the popup, MEGA-2.11) and the
+        // pane-view normalizer (MEGA-2.10), the latter now a checkable
+        // toggle (MEGA-2.11 AC#6): ON = continuous panes lock-step,
+        // OFF = each pane browses freely. Default ON.
         GuiStyle::styleOutlineButton(mUi->showChangesButton);
-        GuiStyle::styleOutlineButton(mUi->applyButton);
         GuiStyle::styleOutlineButton(mUi->synchronizeViewButton);
+        mUi->synchronizeViewButton->setCheckable(true);
+        mUi->synchronizeViewButton->setChecked(true);
+        mUi->synchronizeViewButton->setToolTip(tr("Synchronize view — when checked, both panes expand, select and scroll in lock-step; uncheck to browse each pane independently"));
         connect(mUi->showChangesButton, &QPushButton::clicked, this, [this]() { showChanges(); });
-        connect(mUi->applyButton, &QPushButton::clicked, this, [this]() { applyPlan(); });
-        connect(mUi->synchronizeViewButton, &QPushButton::clicked, this, [this]() { synchronizeView(); });
+        connect(mUi->synchronizeViewButton, &QPushButton::toggled, this, [this](bool locked)
+        {
+            mPanesLocked = locked;
+            if (locked)
+            {
+                // Re-locking re-normalizes: the left pane's per-path
+                // expansion is mirrored onto the right, and selection and
+                // scroll re-align (the left pane is the reference) so the
+                // panes read as one view again.
+                synchronizeView();
+                syncSelectionFrom(mUi->leftTree);
+                syncScrollFrom(mUi->leftTree->verticalScrollBar());
+            }
+        });
 
         for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
         {
             tree->setMinimumHeight(160);
             tree->setSelectionMode(QAbstractItemView::SingleSelection);
+            // Zebra striping (MEGA-2.11 AC#4): the panes are line-locked
+            // (same rows, same order), so the alternating tint — the same
+            // surface token on both — makes corresponding rows trackable
+            // across the panes.
+            tree->setAlternatingRowColors(true);
             QHeaderView* header = tree->header();
             header->setSectionResizeMode(kColPath, QHeaderView::Stretch);
             header->setSectionResizeMode(kColSize, QHeaderView::Fixed);
@@ -415,49 +438,26 @@ namespace SyncPreview
         mPanelStatesLabel = new QLabel(mActionPanel);
         mPanelStatesLabel->setTextFormat(Qt::RichText);
 
-        // One pressable button per action, exclusive: the pressed button is
-        // the row's effective action; the recommendation is a side hint.
-        mActionGroup = new QButtonGroup(mActionPanel);
-        mActionGroup->setExclusive(true);
-        for (const Action choice : actionChoices())
+        // The pressable buttons (MEGA-2.11 AC#8): three checkable arrows in
+        // a fixed order — the left pane stays on the left and the right pane
+        // on the right, so the buttons only flip the arrow (pane directions,
+        // not label words). Clicking decides AND approves in one gesture;
+        // clicking the active button again un-decides to an explicit
+        // do-nothing.
+        const QVector<Action>& choices = actionChoices();
+        for (const Action choice : choices)
         {
             auto* button = new QPushButton(actionButtonText(choice), mActionPanel);
             button->setCheckable(true);
             // Prod widget design: the app's themed components are keyed on
             // the type="mega" property (same convention as MEGA-2.7's rows).
             button->setProperty("type", QLatin1String("mega"));
-            mActionGroup->addButton(button);
             mActionButtons.push_back(button);
             connect(button, &QPushButton::clicked, this, [this, choice](bool checked)
             {
-                if (!checked || mSelectedPath.isEmpty())
-                {
-                    // Unchecking happens programmatically when another
-                    // button takes over; only a real pick decides.
-                    return;
-                }
-                const Row* row = mRowsByPath.value(mSelectedPath);
-                const Plan plan = mController->plan(mPairId);
-                const RowPlan* rowPlan = plan.find(mSelectedPath);
-                const Action effective = rowPlan ? rowPlan->action : (row ? row->recommendedAction : Action::None);
-                if (choice == effective)
-                {
-                    return; // re-click on the active action: no-op
-                }
-                onRowActionSelected(mSelectedPath, choice);
+                onActionButtonClicked(choice, checked);
             });
         }
-
-        mApproveButton = new QPushButton(tr("Approve"), mActionPanel);
-        mApproveButton->setCheckable(true);
-        mApproveButton->setProperty("type", QLatin1String("mega"));
-        connect(mApproveButton, &QPushButton::clicked, this, [this](bool checked)
-        {
-            if (!mSelectedPath.isEmpty())
-            {
-                onRowApprovalToggled(mSelectedPath, checked);
-            }
-        });
 
         mPanelHintLabel = new QLabel(mActionPanel);
 
@@ -474,7 +474,6 @@ namespace SyncPreview
         {
             decisionsRow->addWidget(button);
         }
-        decisionsRow->addWidget(mApproveButton);
         decisionsRow->addStretch(1);
         decisionsRow->addWidget(mPanelHintLabel);
 
@@ -525,7 +524,6 @@ namespace SyncPreview
             {
                 button->setStyleSheet(GuiStyle::actionButtonStyleSheet());
             }
-            mApproveButton->setStyleSheet(GuiStyle::approveButtonStyleSheet());
         }
 
         // Filter-row and footer chrome (MEGA-2.10): the action panel's
@@ -533,9 +531,24 @@ namespace SyncPreview
         // which rendered unreadable (dark on dark) for the reviewer —
         // re-resolved on theme change like the rest of the window.
         const QString chromeSheet = GuiStyle::actionButtonStyleSheet();
-        for (QPushButton* chrome : {mUi->closeButton, mUi->showChangesButton, mUi->applyButton, mUi->synchronizeViewButton})
+        for (QPushButton* chrome : {mUi->closeButton, mUi->showChangesButton, mUi->synchronizeViewButton})
         {
             chrome->setStyleSheet(chromeSheet);
+        }
+
+        // Filter-row and footer text (MEGA-2.11 AC#5): the label/checkbox
+        // colors the app stylesheet leaves dark-on-dark in this window are
+        // pinned to the token colors, re-resolved on theme change like the
+        // buttons above.
+        const QString textPrimarySheet =
+            QStringLiteral("color: %1;").arg(theme->getColor(QLatin1String("text-primary")).name());
+        for (QWidget* widget : {mUi->pairLabel, mUi->filterLabel, mUi->summaryLabel})
+        {
+            widget->setStyleSheet(textPrimarySheet);
+        }
+        for (QCheckBox* filterCheck : {mUi->sameFilterCheck, mUi->differentFilterCheck, mUi->newFilterCheck})
+        {
+            filterCheck->setStyleSheet(textPrimarySheet);
         }
 
         // The state legend (MEGA-2.10), top-right beside the pair label:
@@ -626,7 +639,11 @@ namespace SyncPreview
         QTreeWidget* leftTree = mUi->leftTree;
         QTreeWidget* rightTree = mUi->rightTree;
 
-        const int scrollPosition = leftTree->verticalScrollBar()->value();
+        // Scroll positions survive the repopulation: with Synchronize view
+        // ON both panes follow the left pane's position (lock-step); with
+        // it OFF each pane keeps its own (MEGA-2.11 AC#6).
+        const int leftScroll = leftTree->verticalScrollBar()->value();
+        const int rightScroll = rightTree->verticalScrollBar()->value();
         leftTree->clear();
         rightTree->clear();
         mLeftItems.clear();
@@ -688,23 +705,48 @@ namespace SyncPreview
         }
         mSyncingPanes = false;
 
-        // Restore selection and scroll position across both panes.
-        if (!mSelectedPath.isEmpty())
+        // Restore the per-pane selections and scroll positions. With the
+        // Synchronize view ON both panes follow the left pane's position;
+        // with it OFF each pane keeps its own (MEGA-2.11 AC#6).
+        const auto restoreSelection = [this](QTreeWidget* tree, const QString& path)
         {
-            const auto leftIt = mLeftItems.constFind(mSelectedPath);
-            const auto rightIt = mRightItems.constFind(mSelectedPath);
-            if (leftIt != mLeftItems.constEnd() && rightIt != mRightItems.constEnd())
+            if (path.isEmpty())
             {
-                mUi->leftTree->setCurrentItem(leftIt.value());
-                mUi->rightTree->setCurrentItem(rightIt.value());
+                return;
             }
-            else
+            const auto& items = (tree == mUi->leftTree) ? mLeftItems : mRightItems;
+            const auto it = items.constFind(path);
+            if (it != items.constEnd())
             {
-                // The selected row was filtered away; the panel resets.
-                mSelectedPath.clear();
+                tree->setCurrentItem(it.value());
             }
+        };
+
+        if (!mSelectedPath.isEmpty() &&
+            mLeftItems.constFind(mSelectedPath) == mLeftItems.constEnd() &&
+            mRightItems.constFind(mSelectedPath) == mRightItems.constEnd())
+        {
+            // The selected row was filtered away; the panel resets.
+            mSelectedPath.clear();
+            mLeftSelectedPath.clear();
+            mRightSelectedPath.clear();
         }
-        leftTree->verticalScrollBar()->setValue(scrollPosition);
+        // The restore's own currentItemChanged signals re-derive
+        // mSelectedPath from the last-restored pane; keep the row the user
+        // actually interacted with as the panel's row.
+        const QString activeSelection = mSelectedPath;
+        restoreSelection(mUi->leftTree, mLeftSelectedPath);
+        restoreSelection(mUi->rightTree, mRightSelectedPath);
+        mSelectedPath = activeSelection;
+        leftTree->verticalScrollBar()->setValue(leftScroll);
+        if (mPanesLocked)
+        {
+            rightTree->verticalScrollBar()->setValue(leftScroll);
+        }
+        else
+        {
+            rightTree->verticalScrollBar()->setValue(rightScroll);
+        }
     }
 
     QTreeWidgetItem* SyncPreviewPairDetailDialog::makeSideItem(QTreeWidget* tree,
@@ -740,24 +782,18 @@ namespace SyncPreview
         }
         item->setFont(kColPath, stateFont(state, tree->font()));
 
-        // Icons on BOTH panes, including a missing side: the row's entry
-        // type (whichever side holds it) is what the other side would sync,
-        // so both panes read as mirrored file trees — a local-only folder
-        // shows as a struck folder name on the remote side, not as a blank.
-        bool isFolder = false;
-        if (side)
-        {
-            isFolder = side->isFolder();
-        }
-        else if (row.local)
-        {
-            isFolder = row.local->isFolder();
-        }
-        else if (row.remote)
-        {
-            isFolder = row.remote->isFolder();
-        }
-        if (isFolder)
+        // Icons and the expansion affordance on BOTH panes, keyed on the
+        // ROW's kind, not the side's entry (MEGA-2.11 AC#3): a folder row
+        // reads as a folder left and right, so the panes mirror each other
+        // even for a missing side (struck name) or a type mismatch (file on
+        // one side, folder on the other — the mismatching side keeps its
+        // struck/blocked read and the row tooltip explains). A local-only
+        // folder shows as a struck folder name on the remote side, not as
+        // a blank; the same row never reads file-icon on one pane and
+        // folder-icon on the other.
+        const bool rowIsFolder = (row.local && row.local->isFolder()) ||
+            (row.remote && row.remote->isFolder());
+        if (rowIsFolder)
         {
             QIcon icon;
             icon.addFile(QStringLiteral(":/") + kFolderIcon);
@@ -772,18 +808,23 @@ namespace SyncPreview
         // Expansion on BOTH panes for every folder row (MEGA-2.10): a
         // folder missing on one side keeps its struck-through name but
         // still expands/collapses in lock-step — the reviewer sees the
-        // same tree shape left and right.
-        if (isFolder)
+        // same tree shape left and right. With Synchronize view OFF the
+        // right pane reads its own expansion map (MEGA-2.11 AC#6).
+        if (rowIsFolder)
         {
-            item->setExpanded(mExpandedByPath.value(row.relativePath, true));
+            const QHash<QString, bool>& expansionMap =
+                (localSide || mPanesLocked) ? mExpandedByPath : mRightExpandedByPath;
+            item->setExpanded(expansionMap.value(row.relativePath, true));
         }
         return item;
     }
 
     void SyncPreviewPairDetailDialog::syncScrollFrom(QScrollBar* source)
     {
-        if (mSyncingPanes)
+        if (mSyncingPanes || !mPanesLocked)
         {
+            // Unchecked Synchronize view (MEGA-2.11 AC#6): each pane
+            // scrolls freely.
             return;
         }
 
@@ -802,28 +843,43 @@ namespace SyncPreview
     void SyncPreviewPairDetailDialog::syncSelectionFrom(QTreeWidget* source)
     {
         QTreeWidgetItem* current = source->currentItem();
-        mSelectedPath = current ? current->data(kColPath, Qt::UserRole).toString() : QString();
-
-        mSyncingPanes = true;
-        for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
+        const QString path = current ? current->data(kColPath, Qt::UserRole).toString() : QString();
+        mSelectedPath = path;
+        if (source == mUi->leftTree)
         {
-            if (tree != source)
-            {
-                QTreeWidgetItem* mirror = nullptr;
-                if (!mSelectedPath.isEmpty())
-                {
-                    const auto& items = (tree == mUi->leftTree) ? mLeftItems : mRightItems;
-                    const auto it = items.constFind(mSelectedPath);
-                    if (it != items.constEnd())
-                    {
-                        mirror = it.value();
-                    }
-                }
-                const QSignalBlocker blocker(tree);
-                tree->setCurrentItem(mirror);
-            }
+            mLeftSelectedPath = path;
         }
-        mSyncingPanes = false;
+        else
+        {
+            mRightSelectedPath = path;
+        }
+
+        // The selection is mirrored when the Synchronize view toggle is ON
+        // (the panes read as one view); with it OFF the sibling pane keeps
+        // its own selection (MEGA-2.11 AC#6).
+        if (mPanesLocked)
+        {
+            mSyncingPanes = true;
+            for (QTreeWidget* tree : {mUi->leftTree, mUi->rightTree})
+            {
+                if (tree != source)
+                {
+                    QTreeWidgetItem* mirror = nullptr;
+                    if (!mSelectedPath.isEmpty())
+                    {
+                        const auto& items = (tree == mUi->leftTree) ? mLeftItems : mRightItems;
+                        const auto it = items.constFind(mSelectedPath);
+                        if (it != items.constEnd())
+                        {
+                            mirror = it.value();
+                        }
+                    }
+                    const QSignalBlocker blocker(tree);
+                    tree->setCurrentItem(mirror);
+                }
+            }
+            mSyncingPanes = false;
+        }
 
         updateActionPanel();
     }
@@ -837,6 +893,25 @@ namespace SyncPreview
         {
             return;
         }
+
+        if (!mPanesLocked)
+        {
+            // Free browsing (MEGA-2.11 AC#6): record into the source pane's
+            // own map so a rebuild restores exactly this pane's shape; the
+            // sibling pane keeps its own.
+            if (source == mUi->leftTree)
+            {
+                mExpandedByPath.insert(path, expanded);
+            }
+            else
+            {
+                mRightExpandedByPath.insert(path, expanded);
+            }
+            return;
+        }
+
+        // Locked: one shared reference map, mirrored onto the sibling pane
+        // (mSyncingPanes suppresses the mirror's own signals).
         mExpandedByPath.insert(path, expanded);
 
         mSyncingPanes = true;
@@ -930,7 +1005,6 @@ namespace SyncPreview
                 button->setChecked(false);
                 button->setEnabled(false);
             }
-            mApproveButton->setVisible(false);
             mPanelHintLabel->clear();
             mPanelNotesLabel->clear();
             mPanelNotesLabel->setVisible(false);
@@ -948,17 +1022,30 @@ namespace SyncPreview
             .arg(stateText(localState), stateColor(localState, theme.get()).name(),
                  stateText(remoteState), stateColor(remoteState, theme.get()).name()));
 
-        // The effective action (decisions already folded in by the planner)
-        // is the pressed button; the recommendation is a side hint.
+        // Checked state (MEGA-2.11 AC#8): an own decision lights its button
+        // (an explicit do-nothing lights none); a flagged row without an own
+        // decision lights NONE — its approval must come from a click, even
+        // when the plan would inherit or recommend an action; an unflagged
+        // row lights its effective action (own decision aside: inherited or
+        // the recommendation), because "clicked = what will happen".
         const Plan plan = mController->plan(mPairId);
         const RowPlan* rowPlan = plan.find(row->relativePath);
         const Action effective = rowPlan ? rowPlan->action : row->recommendedAction;
-        const QVector<Action>& choices = actionChoices();
+        const ActionSource effectiveSource = rowPlan ? rowPlan->actionSource : ActionSource::Recommended;
+        const QString effectiveSourcePath = rowPlan ? rowPlan->decisionSourcePath : QString();
+
+        const QHash<QString, RowDecision> decisions = decisionsFor();
+        const bool hasOwnDecision = decisions.contains(row->relativePath);
+        const Action ownAction = hasOwnDecision ? decisions.value(row->relativePath).action : Action::None;
+        const Action checkedAction = hasOwnDecision ? ownAction
+            : (row->requiresApproval ? Action::None : effective);
+
         // Rename-aware decidability (MEGA-2.9): the arrow actions decide on
         // conflict and blocker rows alike — they mean "transfer with an
         // automatic rename". On blocker rows only best-effort stays out
-        // (a merge cannot fix a structural collision); "Do nothing" is
-        // always the no-op state.
+        // (a merge cannot fix a structural collision); "do nothing" is the
+        // unclicked state.
+        const QVector<Action>& choices = actionChoices();
         const bool isBlocker = row->kind == RowKind::Blocker;
         for (int i = 0; i < mActionButtons.size() && i < choices.size(); ++i)
         {
@@ -966,7 +1053,7 @@ namespace SyncPreview
             const Action choice = choices.at(i);
             const bool decidable = !isBlocker || choice != Action::BestEffort;
             mActionButtons[i]->setEnabled(decidable);
-            mActionButtons[i]->setChecked(choice == effective);
+            mActionButtons[i]->setChecked(choice == checkedAction);
             QString tip = actionTooltip(choice);
             if (choice == row->recommendedAction)
             {
@@ -982,21 +1069,39 @@ namespace SyncPreview
             }
             mActionButtons[i]->setToolTip(tip);
         }
-        mPanelHintLabel->setText(tr("Recommended: %1").arg(actionName(row->recommendedAction)));
+
+        // The description right of the buttons: the clicked action's prose;
+        // when nothing is clicked, what the row still waits for.
+        QString hintText;
+        const char* hintToken = "text-secondary";
+        if (hasOwnDecision && ownAction != Action::None)
+        {
+            hintText = actionName(ownAction);
+            hintToken = "text-primary";
+        }
+        else if (hasOwnDecision)
+        {
+            hintText = tr("do nothing — nothing transfers");
+        }
+        else if (row->requiresApproval)
+        {
+            hintText = row->recommendedAction != Action::None
+                ? tr("Needs your decision — recommended: %1").arg(actionName(row->recommendedAction))
+                : tr("Needs your decision");
+            hintToken = "text-warning";
+        }
+        else if (effectiveSource == ActionSource::InheritedFromDirectory)
+        {
+            hintText = tr("%1 — from directory %2").arg(actionName(effective), effectiveSourcePath);
+        }
+        else
+        {
+            hintText = tr("Recommended: %1").arg(actionName(effective));
+        }
+        mPanelHintLabel->setText(hintText);
         mPanelHintLabel->setStyleSheet(
             QStringLiteral("QLabel { color: %1; }")
-                .arg(theme->getColor(QLatin1String("text-secondary")).name()));
-
-        // Approval only on rows the classifier flagged for it, and only when
-        // something actually transfers: approving a "do nothing" row is a
-        // no-op and would just read as noise.
-        const QHash<QString, RowDecision> decisions = decisionsFor();
-        mApproveButton->setVisible(row->requiresApproval && effective != Action::None);
-        {
-            const QSignalBlocker blocker(mApproveButton);
-            mApproveButton->setEnabled(row->kind != RowKind::Blocker || row->requiresApproval);
-            mApproveButton->setChecked(decisions.value(row->relativePath).approved);
-        }
+                .arg(theme->getColor(QLatin1String(hintToken)).name()));
 
         // Notes: conflict/blocker reasons, twin, blocked path, re-flag.
         QStringList notes;
@@ -1059,12 +1164,59 @@ namespace SyncPreview
             }
         }
 
+        // Decide + approve in one gesture (MEGA-2.11 AC#8): the click IS
+        // the approval; the commit gate counts flagged rows that were
+        // never clicked.
         mController->setAction(mPairId, relativePath, action);
+        mController->setApproved(mPairId, relativePath, true);
     }
 
-    void SyncPreviewPairDetailDialog::onRowApprovalToggled(const QString& relativePath, bool approved)
+    void SyncPreviewPairDetailDialog::onRowDecisionCleared(const QString& relativePath)
     {
-        mController->setApproved(mPairId, relativePath, approved);
+        // Un-decide (the active button toggled off): an explicit do-nothing
+        // decision the planner respects — no recommendation fallback, no
+        // consequences popup (nothing is applied), and the approval is
+        // withdrawn with it.
+        mController->setAction(mPairId, relativePath, Action::None);
+        mController->setApproved(mPairId, relativePath, false);
+    }
+
+    void SyncPreviewPairDetailDialog::onActionButtonClicked(Action choice, bool checked)
+    {
+        if (mSelectedPath.isEmpty() || !mRowsByPath.contains(mSelectedPath))
+        {
+            return;
+        }
+
+        if (!checked)
+        {
+            // Only the visually active button can toggle off on click:
+            // this is the un-decide gesture.
+            onRowDecisionCleared(mSelectedPath);
+            return;
+        }
+
+        // A new pick: drop the previous active visual (a decision, an
+        // inherited action or the recommendation's pre-clicked state).
+        const Row* row = mRowsByPath.value(mSelectedPath);
+        const QHash<QString, RowDecision> decisions = decisionsFor();
+        const bool hasOwnDecision = decisions.contains(mSelectedPath);
+        const Action active = hasOwnDecision ? decisions.value(mSelectedPath).action
+            : (row->requiresApproval ? Action::None : row->recommendedAction);
+        if (active != Action::None && active != choice)
+        {
+            const QVector<Action>& choices = actionChoices();
+            for (int i = 0; i < mActionButtons.size() && i < choices.size(); ++i)
+            {
+                if (choices.at(i) == active)
+                {
+                    const QSignalBlocker blocker(mActionButtons[i]);
+                    mActionButtons[i]->setChecked(false);
+                }
+            }
+        }
+
+        onRowActionSelected(mSelectedPath, choice);
     }
 
     void SyncPreviewPairDetailDialog::showChanges()
@@ -1078,7 +1230,13 @@ namespace SyncPreview
         const QString pairTitle = pair->localPath + QStringLiteral("  <->  ") + pair->remotePath;
         SyncPreviewChangesDialog changes(pairTitle, mController->plan(mPairId),
                                          mController->awaitingApprovalPaths(mPairId), this);
-        changes.exec();
+        // Apply moved into the popup (MEGA-2.11 AC#7): Accepted runs the
+        // review loop's apply step here, exactly like the old filter-row
+        // button; pairChanged rebuilds the panes.
+        if (changes.exec() == QDialog::Accepted)
+        {
+            applyPlan();
+        }
     }
 
     void SyncPreviewPairDetailDialog::applyPlan()
@@ -1114,5 +1272,9 @@ namespace SyncPreview
             }
         }
         mSyncingPanes = false;
+
+        // The right pane's free-expansion memory is replaced by the
+        // normalized shape, so unlocking afterwards starts from it.
+        mRightExpandedByPath = mExpandedByPath;
     }
 }

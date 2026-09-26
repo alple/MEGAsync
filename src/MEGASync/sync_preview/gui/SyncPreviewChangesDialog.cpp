@@ -2,8 +2,10 @@
 
 #include "SyncPreviewGuiStyle.h"
 
+#include "ThemeManager.h"
 #include "TokenParserWidgetManager.h"
 
+#include <QBrush>
 #include <QDialogButtonBox>
 #include <QHeaderView>
 #include <QLabel>
@@ -61,7 +63,10 @@ namespace SyncPreview
     {
         setWindowTitle(tr("Scheduled changes"));
         setMinimumSize(560, 400);
-        setAttribute(Qt::WA_DeleteOnClose);
+        // No WA_DeleteOnClose: this dialog is stack-allocated and exec()'d
+        // (lifetime scoped by exec); with the attribute set Qt schedules a
+        // deferred delete of a stack object and the app aborts on close
+        // with "free(): invalid size" (MEGA-2.11 AC#1).
 
         // Prod theming: the popup is exec()'d (never tracked by
         // DialogOpener), so it must register itself to receive the app's
@@ -70,20 +75,20 @@ namespace SyncPreview
 
         auto* layout = new QVBoxLayout(this);
 
-        auto* header = new QLabel(tr("Scheduled changes for <b>%1</b>:").arg(pairTitle.toHtmlEscaped()), this);
-        header->setTextFormat(Qt::RichText);
-        header->setWordWrap(true);
-        layout->addWidget(header);
+        mHeaderLabel = new QLabel(tr("Scheduled changes for <b>%1</b>:").arg(pairTitle.toHtmlEscaped()), this);
+        mHeaderLabel->setTextFormat(Qt::RichText);
+        mHeaderLabel->setWordWrap(true);
+        layout->addWidget(mHeaderLabel);
 
         mChangesTree = new QTreeWidget(this);
         mChangesTree->setRootIsDecorated(false);
         mChangesTree->setUniformRowHeights(true);
         mChangesTree->setAllColumnsShowFocus(true);
+        mChangesTree->setAlternatingRowColors(true);
         mChangesTree->setColumnCount(2);
         mChangesTree->setHeaderLabels({tr("Path"), tr("Scheduled change")});
         mChangesTree->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
         mChangesTree->header()->setStretchLastSection(true);
-        GuiStyle::applyViewPalette(mChangesTree);
         layout->addWidget(mChangesTree, 1);
 
         const QSet<QString> awaiting{awaitingPaths.cbegin(), awaitingPaths.cend()};
@@ -119,8 +124,8 @@ namespace SyncPreview
                 item->setText(1, change);
                 if (awaiting.contains(rowPlan.relativePath))
                 {
-                    item->setForeground(0, GuiStyle::token(QLatin1String("text-warning")));
-                    item->setForeground(1, GuiStyle::token(QLatin1String("text-warning")));
+                    item->setData(0, Qt::UserRole, QLatin1String("awaiting"));
+                    item->setData(1, Qt::UserRole, QLatin1String("awaiting"));
                 }
                 ++entries;
             }
@@ -133,27 +138,90 @@ namespace SyncPreview
 
         if (entries == 0)
         {
-            layout->addWidget(new QLabel(tr("No scheduled changes under the current decisions."), this));
+            mEmptyLabel = new QLabel(tr("No scheduled changes under the current decisions."), this);
+            layout->addWidget(mEmptyLabel);
         }
 
-        if (!warnings.isEmpty())
+        mWarningLines = warnings.values();
+        if (!mWarningLines.isEmpty())
         {
-            auto* notes = new QLabel(this);
-            notes->setTextFormat(Qt::RichText);
-            notes->setWordWrap(true);
+            mNotesLabel = new QLabel(this);
+            mNotesLabel->setTextFormat(Qt::RichText);
+            mNotesLabel->setWordWrap(true);
+            layout->addWidget(mNotesLabel);
+        }
+
+        // The review loop's Apply step lives here (MEGA-2.11 AC#7): Apply
+        // executes exactly the listed plan (the caller runs it on Accepted)
+        // and closes the popup; Close just closes. The Apply standard
+        // button emits only clicked(), never accepted(), so it is wired
+        // directly.
+        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Apply | QDialogButtonBox::Close, this);
+        buttons->button(QDialogButtonBox::Apply)
+            ->setToolTip(tr("Executes the scheduled changes on the fake data and re-resolves the panes (review loop, no real transfer)"));
+        connect(buttons->button(QDialogButtonBox::Apply), &QPushButton::clicked, this, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+        layout->addWidget(buttons);
+
+        applyPalette();
+
+        // Rows whose colors are token-resolved re-resolve on live theme
+        // changes, like the rest of the sync_preview windows.
+        connect(ThemeManager::instance(), &ThemeManager::themeChanged, this, [this]()
+        {
+            applyPalette();
+        });
+    }
+
+    void SyncPreviewChangesDialog::applyPalette()
+    {
+        auto theme = TokenParserWidgetManager::instance();
+
+        // Same read as the pair-detail window: the window (and the labels
+        // the app stylesheet leaves dark-on-dark) pinned to token colors,
+        // the tree on the page background with zebra rows, the buttons in
+        // the proven quiet chrome sheet. Everything re-resolves on theme
+        // change.
+        GuiStyle::applyWindowPalette(this);
+        GuiStyle::applyViewPalette(mChangesTree);
+
+        mHeaderLabel->setStyleSheet(
+            QStringLiteral("QLabel { color: %1; }")
+                .arg(theme->getColor(QLatin1String("text-primary")).name()));
+        if (mEmptyLabel)
+        {
+            mEmptyLabel->setStyleSheet(
+                QStringLiteral("QLabel { color: %1; }")
+                    .arg(theme->getColor(QLatin1String("text-secondary")).name()));
+        }
+
+        // Row text: primary everywhere except the awaiting-approval rows
+        // (warning color), re-resolved over the stored marker.
+        for (int row = 0; row < mChangesTree->topLevelItemCount(); ++row)
+        {
+            QTreeWidgetItem* item = mChangesTree->topLevelItem(row);
+            const QColor color = item->data(0, Qt::UserRole) == QLatin1String("awaiting")
+                ? theme->getColor(QLatin1String("text-warning"))
+                : theme->getColor(QLatin1String("text-primary"));
+            item->setForeground(0, QBrush(color));
+            item->setForeground(1, QBrush(color));
+        }
+
+        if (mNotesLabel)
+        {
             QStringList lines;
-            for (const QString& warning : warnings)
+            for (const QString& warning : mWarningLines)
             {
                 lines << QStringLiteral("• %1").arg(warning.toHtmlEscaped());
             }
-            notes->setText(QStringLiteral("<span style=\"color:%2;\">%1</span>")
-                               .arg(lines.join(QStringLiteral("<br/>")),
-                                    GuiStyle::token(QLatin1String("text-warning")).name()));
-            layout->addWidget(notes);
+            mNotesLabel->setText(QStringLiteral("<span style=\"color:%2;\">%1</span>")
+                                     .arg(lines.join(QStringLiteral("<br/>")),
+                                          theme->getColor(QLatin1String("text-warning")).name()));
         }
 
-        auto* buttons = new QDialogButtonBox(QDialogButtonBox::Close, this);
-        connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-        layout->addWidget(buttons);
+        for (QPushButton* button : findChildren<QPushButton*>())
+        {
+            button->setStyleSheet(GuiStyle::actionButtonStyleSheet());
+        }
     }
 }

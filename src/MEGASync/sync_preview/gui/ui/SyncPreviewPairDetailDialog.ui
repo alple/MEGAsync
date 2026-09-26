@@ -145,22 +145,12 @@
       </widget>
      </item>
      <item>
-      <widget class="QPushButton" name="applyButton">
-       <property name="text">
-        <string>Apply</string>
-       </property>
-       <property name="toolTip">
-        <string>Executes the scheduled changes on the fake data and re-resolves the panes (review loop, no real transfer)</string>
-       </property>
-      </widget>
-     </item>
-     <item>
       <widget class="QPushButton" name="synchronizeViewButton">
        <property name="text">
         <string>Synchronize view</string>
        </property>
        <property name="toolTip">
-        <string>Applies the left pane's expansion state to the right pane so both panes show the same shape</string>
+        <string>When checked, both panes expand, select and scroll in lock-step; uncheck to browse each pane independently</string>
        </property>
       </widget>
      </item>

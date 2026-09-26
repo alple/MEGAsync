@@ -6,6 +6,7 @@
 #include <QDialog>
 #include <QStringList>
 
+class QLabel;
 class QTreeWidget;
 
 namespace SyncPreview
@@ -16,8 +17,10 @@ namespace SyncPreview
     // rename with its from → to paths, removal destination), and folder
     // subtree notes. Rows still awaiting approval are marked in the
     // warning color; the planner's aggregated warnings close the list.
-    // Read-only companion to the Apply step: it always reflects the plan
-    // Apply would execute on the fake data.
+    // The Apply step lives here (MEGA-2.11 AC#7): Apply accepts the dialog
+    // and the caller executes the listed plan (fake data); Close rejects.
+    // Stack-allocated and exec()'d by its callers — no WA_DeleteOnClose
+    // (deleting a stack object aborts the app, MEGA-2.11 AC#1).
     class SyncPreviewChangesDialog : public QDialog
     {
         Q_OBJECT
@@ -29,8 +32,15 @@ namespace SyncPreview
                                           QWidget* parent = nullptr);
 
     private:
+        // Token colors for the window, labels, tree rows and the button
+        // box; re-resolved on live theme changes.
+        void applyPalette();
+
         QTreeWidget* mChangesTree = nullptr;
+        QLabel* mHeaderLabel = nullptr;
+        QLabel* mEmptyLabel = nullptr;
+        QLabel* mNotesLabel = nullptr;
+        QStringList mWarningLines;
     };
 }
-
 #endif // SYNCPREVIEWCHANGESDIALOG_H

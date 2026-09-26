@@ -14,7 +14,7 @@
 // ("6.6.2-dev.N"). VER_PRODUCTVERSION_STR, VER_FILEVERSION_CODE and the
 // update-check numeric stay untouched — this is display-only.
 // Bump N whenever this fork ships a binary built from new fork changes.
-#define VER_FORK_SUFFIX "-dev.1"
+#define VER_FORK_SUFFIX "-dev.2"
 #define VER_PRODUCTVERSION VER_MAJOR, VER_MINOR, VER_MICRO, VER_RC
 #define VER_FILEVERSION VER_MAJOR, VER_MINOR, VER_MICRO, VER_RC
 #define VER_FILEVERSION_CODE (VER_MAJOR * 10000 + VER_MINOR * 100 + VER_MICRO)

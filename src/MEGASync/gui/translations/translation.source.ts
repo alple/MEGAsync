@@ -8850,6 +8850,10 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <source>No scheduled changes under the current decisions.</source>
         <translation type="unfinished"></translation>
     </message>
+    <message>
+        <source>Executes the scheduled changes on the fake data and re-resolves the panes (review loop, no real transfer)</source>
+        <translation type="unfinished"></translation>
+    </message>
 </context>
 <context>
     <name>SyncPreview::SyncPreviewConsequencesDialog</name>
@@ -9043,10 +9047,6 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Approve</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Select a row to decide</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9080,6 +9080,26 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
     <message>
         <source>a merge cannot resolve a blocked row</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Synchronize view — when checked, both panes expand, select and scroll in lock-step; uncheck to browse each pane independently</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>do nothing — nothing transfers</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Needs your decision — recommended: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Needs your decision</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 — from directory %2</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -9157,14 +9177,6 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished">Blocked</translation>
     </message>
     <message>
-        <source>Best-effort</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Do nothing</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Close</source>
         <translation type="unfinished">Close</translation>
     </message>
@@ -9193,35 +9205,11 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Transfer local → remote</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Transfer remote → local</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Best-effort transfer</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Leave this row unresolved (nothing transfers)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>Show changes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Lists the changes scheduled under the current decisions (renames included)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Apply</source>
-        <translation type="unfinished">Apply</translation>
-    </message>
-    <message>
-        <source>Executes the scheduled changes on the fake data and re-resolves the panes (review loop, no real transfer)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9233,7 +9221,23 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Applies the left pane&apos;s expansion state to the right pane so both panes show the same shape</source>
+        <source>When checked, both panes expand, select and scroll in lock-step; uncheck to browse each pane independently</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>↔</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Make remote like local (upload/overwrite; remote-only entries are removed from MEGA, recoverable). Clicking decides and approves in one step; click again to un-decide</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Make local like remote (download/overwrite; local-only entries are removed locally, recoverable). Clicking decides and approves in one step; click again to un-decide</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Best-effort both-way merge (missing side gets the file; same-name-differ conflicts). Clicking decides and approves in one step; click again to un-decide</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
