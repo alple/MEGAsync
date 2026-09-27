@@ -77,14 +77,21 @@ namespace SyncPreview
         // buttons: readable outline in the normal state, inverse accent when
         // checked, and a readable (not near-invisible) disabled state.
         // Re-resolve on theme change (the dialog does in applyPanesPalette).
-        inline QString actionButtonStyleSheet()
+        // compact=true is the per-row decision-column variant (MEGA-2.12):
+        // same read, tighter padding and a smaller font so three buttons
+        // fill a tree row without leftover width.
+        inline QString actionButtonStyleSheet(bool compact = false)
         {
+            const QString padding =
+                compact ? QStringLiteral("0px 2px") : QStringLiteral("4px 14px");
+            const QString font =
+                compact ? QStringLiteral(" font-size: 10px;") : QString();
             return QStringLiteral(
                 "QPushButton {"
                 " background: transparent;"
                 " border: 1px solid %1;"
                 " border-radius: 4px;"
-                " padding: 4px 14px;"
+                " padding: %6;%7"
                 " color: %2;"
                 " }"
                 "QPushButton:hover { border-color: %3; }"
@@ -94,7 +101,9 @@ namespace SyncPreview
                      token(QLatin1String("text-primary")).name(),
                      token(QLatin1String("surface-inverse-accent")).name(),
                      token(QLatin1String("text-inverse-accent")).name(),
-                     token(QLatin1String("text-secondary")).name());
+                     token(QLatin1String("text-secondary")).name(),
+                     padding,
+                     font);
         }
 
     }

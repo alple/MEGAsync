@@ -35,8 +35,11 @@ namespace SyncPreview
     // meld's states — Same / Modified / New / Missing / Blocked — colored
     // per SIDE, so one row can read New on the left and Missing on the
     // right; state filters (Same hidden by default, blockers always shown)
-    // sit above the panes. There is no middle strip: the selected row's
-    // action buttons and approval toggle live in a panel UNDER the trees.
+    // sit above the panes. Between the panes sits a narrow decision column
+    // (MEGA-2.12): per-row compact arrow buttons (→, ←, ↔) that carry the
+    // bottom action panel's decide+approve gesture onto every row, without
+    // selecting it first. The selected row's action buttons and state
+    // readout still live in the panel UNDER the trees (tester: both stay).
     // Opened from the pair-first list; non-modal so several pairs can be
     // reviewed side by side. Shares the pair list's PairController: decisions
     // made here are persisted and re-verified exactly as before. The window
@@ -63,9 +66,12 @@ namespace SyncPreview
         void applyPanesPalette();
         void repopulate();
         void updateActionPanel();
+        // The per-row decision column (MEGA-2.12): re-derives every row's
+        // checked/enabled arrow state from the current decisions.
+        void updateDecisionColumn();
         // The arrows decide AND approve in one gesture (MEGA-2.11 AC#8);
         // toggling the active arrow off records an explicit do-nothing.
-        void onActionButtonClicked(Action choice, bool checked);
+        void onActionButtonClicked(const QString& relativePath, Action choice, bool checked);
         void onRowDecisionCleared(const QString& relativePath);
         // Review-loop surface (MEGA-2.9): the scheduled-changes list and
         // the fake-data Apply step (controller re-scans + re-verifies; the
@@ -88,11 +94,23 @@ namespace SyncPreview
                                       QTreeWidgetItem* parent,
                                       const Row& row,
                                       bool localSide);
+        // The decision column's row for one classification row: no text,
+        // just the three compact arrow buttons (MEGA-2.12).
+        QTreeWidgetItem* makeDecisionItem(const Row& row, QTreeWidgetItem* parent);
+        // The tooltip shared by the bottom panel's and the column's arrow
+        // buttons (action prose + recommendation/blocker notes).
+        QString decisionButtonTooltip(const Row& row, Action choice, bool decidable) const;
         QTreeWidgetItem* loadMoreItem(int remaining);
         QString rowTooltip(const Row& row) const;
         bool rowVisible(const Row& row, const QString& filter) const;
         QHash<QString, RowDecision> decisionsFor() const;
         void updateSummary();
+        // The directory action's consequences as a one-line footer note
+        // (MEGA-2.12: replaces the popup): built from the preview plan at
+        // click time, rendered in updateSummary, full breakdown in the
+        // tooltip; the note's path invalidates it (un-decide / Apply).
+        void setDirectoryNote(const QString& directoryPath, const RowPlan* directoryPlan);
+        void renderDirectoryNote();
 
         const QString mPairId;
         PairController* mController = nullptr;
@@ -105,6 +123,10 @@ namespace SyncPreview
         // what keeps expansion/selection/scrolling in path lock-step.
         QHash<QString, QTreeWidgetItem*> mLeftItems;
         QHash<QString, QTreeWidgetItem*> mRightItems;
+        // The decision column's rows keyed by path (MEGA-2.12), plus the
+        // per-row arrow buttons so their checked state can be re-derived.
+        QHash<QString, QTreeWidgetItem*> mMidItems;
+        QHash<QString, QVector<QPushButton*>> mMidButtonsByPath;
         // Expansion and selection survive repopulation (filter edits,
         // decisions, themes). The left map is the reference; with
         // Synchronize view OFF the right pane keeps its own expansion map
@@ -130,6 +152,14 @@ namespace SyncPreview
         QVector<QPushButton*> mActionButtons;
         QLabel* mPanelHintLabel = nullptr;
         QLabel* mPanelNotesLabel = nullptr;
+
+        // The directory action's consequences, footer-line form
+        // (MEGA-2.12). Empty path = no note; the label lives in the .ui
+        // footer layout and is created in the constructor.
+        QLabel* mDirectoryNoteLabel = nullptr;
+        QString mDirectoryNotePath;
+        QString mDirectoryNoteLine;
+        QString mDirectoryNoteTooltip;
 
         int mShownCount = 0;
     };

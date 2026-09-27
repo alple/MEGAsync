@@ -4,6 +4,7 @@
 #include "SyncPreviewPlanner.h"
 
 #include <QDialog>
+#include <QHash>
 #include <QStringList>
 
 class QLabel;
@@ -16,7 +17,10 @@ namespace SyncPreview
     // — path, the change it performs (transfer direction, overwrite,
     // rename with its from → to paths, removal destination), and folder
     // subtree notes. Rows still awaiting approval are marked in the
-    // warning color; the planner's aggregated warnings close the list.
+    // warning color. A row whose plan carries warnings shows the
+    // exclamation-triangle icon on its path cell, that path's warnings in
+    // the hover tooltip (MEGA-2.12); warnings of subtree-covered rows fold
+    // into their covering directory row's tooltip, so nothing is lost.
     // The Apply step lives here (MEGA-2.11 AC#7): Apply accepts the dialog
     // and the caller executes the listed plan (fake data); Close rejects.
     // Stack-allocated and exec()'d by its callers — no WA_DeleteOnClose
@@ -39,8 +43,9 @@ namespace SyncPreview
         QTreeWidget* mChangesTree = nullptr;
         QLabel* mHeaderLabel = nullptr;
         QLabel* mEmptyLabel = nullptr;
-        QLabel* mNotesLabel = nullptr;
-        QStringList mWarningLines;
+        // Per-path warnings of the listed plan (keyed by the listed
+        // operation path; covered rows fold under their covering path).
+        QHash<QString, QStringList> mWarningsByPath;
     };
 }
 #endif // SYNCPREVIEWCHANGESDIALOG_H

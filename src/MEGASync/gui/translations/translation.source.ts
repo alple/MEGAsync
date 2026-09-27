@@ -8856,53 +8856,6 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
 </context>
 <context>
-    <name>SyncPreview::SyncPreviewConsequencesDialog</name>
-    <message>
-        <source>Consequences of the directory action</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Applying the chosen action under &lt;b&gt;%1&lt;/b&gt; will:</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Created on local disk</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Overwritten locally (previous copy recoverable)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Removed locally (moved to the OS trash)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Created on MEGA</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Overwritten remotely (previous copy to Rubbish)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Removed remotely (moved to MEGA Rubbish)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Warnings</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>No files under this directory are affected.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Apply</source>
-        <translation type="unfinished">Apply</translation>
-    </message>
-</context>
-<context>
     <name>SyncPreview::SyncPreviewDialog</name>
     <message>
         <source>%1 item(s) awaiting approval</source>
@@ -9019,59 +8972,11 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Identical twin: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Under a blocked path: resolve the blocker above first</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>%1 item(s) awaiting approval</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>all flagged items approved</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Same content, different name — needs approval</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Blocker: file vs folder at the same path</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Blocker: case-insensitive name collision</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Select a row to decide</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Recommended: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>classification changed — re-approve</source>
+        <source>Synchronize view — when checked, both panes expand, select and scroll in lock-step; uncheck to browse each pane independently</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <source>recommended</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Local twin of the remote content: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>An arrow action transfers by renaming the identical twin to this name, without a duplicate</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>An arrow action transfers with an automatic rename; “do nothing” leaves it blocked</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9083,7 +8988,39 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Synchronize view — when checked, both panes expand, select and scroll in lock-step; uncheck to browse each pane independently</source>
+        <source>Identical twin: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Local twin of the remote content: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Same content, different name — needs approval</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An arrow action transfers by renaming the identical twin to this name, without a duplicate</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Under a blocked path: resolve the blocker above first</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Blocker: file vs folder at the same path</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Blocker: case-insensitive name collision</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>An arrow action transfers with an automatic rename; “do nothing” leaves it blocked</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select a row to decide</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -9100,6 +9037,58 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
     <message>
         <source>%1 — from directory %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Recommended: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>classification changed — re-approve</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 item(s) awaiting approval</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>all flagged items approved</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>%1 %2</source>
+        <translation type="unfinished">%1 %2</translation>
+    </message>
+    <message>
+        <source>removed locally</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>overwritten locally</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>created locally</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>removed from MEGA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>overwritten on MEGA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>created on MEGA</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Directory action on %1: nothing under it is affected.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Directory action on %1: %2.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -9238,6 +9227,18 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
     </message>
     <message>
         <source>Best-effort both-way merge (missing side gets the file; same-name-differ conflicts). Clicking decides and approves in one step; click again to un-decide</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decision</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>removed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>overwritten</source>
         <translation type="unfinished"></translation>
     </message>
 </context>

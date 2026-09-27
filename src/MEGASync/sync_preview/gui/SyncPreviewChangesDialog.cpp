@@ -94,9 +94,23 @@ namespace SyncPreview
         const QSet<QString> awaiting{awaitingPaths.cbegin(), awaitingPaths.cend()};
 
         int entries = 0;
-        QSet<QString> warnings;
         for (const RowPlan& rowPlan : plan.rows)
         {
+            // Per-row warnings (MEGA-2.12): the triangle icon goes on each
+            // affected row; a row covered by a directory subtree op folds
+            // its warnings into the covering directory row's tooltip, so
+            // the aggregated bottom list can go.
+            QStringList rowWarnings = rowPlan.warnings;
+            if (!rowPlan.coveredByPath.isEmpty() && !rowWarnings.isEmpty())
+            {
+                mWarningsByPath[rowPlan.coveredByPath] += rowWarnings;
+                rowWarnings.clear();
+            }
+            else if (!rowWarnings.isEmpty())
+            {
+                mWarningsByPath[rowPlan.relativePath] += rowWarnings;
+            }
+
             if (!rowPlan.coveredByPath.isEmpty())
             {
                 continue;  // inside a directory's subtree operation; listed there
@@ -109,8 +123,8 @@ namespace SyncPreview
                     case OperationType::RenameRemote:
                     case OperationType::RenameLocal:
                         change = tr("%1: %2 → %3")
-                                     .arg(operation.type == OperationType::RenameRemote ? tr("renamed on MEGA") : tr("renamed locally"),
-                                          operation.fromPath, operation.toPath);
+                                      .arg(operation.type == OperationType::RenameRemote ? tr("renamed on MEGA") : tr("renamed locally"),
+                                           operation.fromPath, operation.toPath);
                         break;
                     case OperationType::None:
                         continue;
@@ -122,6 +136,16 @@ namespace SyncPreview
                 auto* item = new QTreeWidgetItem(mChangesTree);
                 item->setText(0, operation.path);
                 item->setText(1, change);
+                // The exclamation triangle on the path cell when this row's
+                // plan carries warnings; the tooltip spells them out.
+                if (mWarningsByPath.contains(operation.path))
+                {
+                    QIcon warningIcon;
+                    warningIcon.addFile(QStringLiteral(":/images/alert-triangle-small.png"));
+                    warningIcon.addFile(QStringLiteral(":/images/alert-triangle-small@2x.png"));
+                    item->setIcon(0, warningIcon);
+                    item->setToolTip(0, mWarningsByPath.value(operation.path).join(QLatin1Char('\n')));
+                }
                 if (awaiting.contains(rowPlan.relativePath))
                 {
                     item->setData(0, Qt::UserRole, QLatin1String("awaiting"));
@@ -129,26 +153,12 @@ namespace SyncPreview
                 }
                 ++entries;
             }
-
-            for (const QString& warning : rowPlan.warnings)
-            {
-                warnings.insert(warning);
-            }
         }
 
         if (entries == 0)
         {
             mEmptyLabel = new QLabel(tr("No scheduled changes under the current decisions."), this);
             layout->addWidget(mEmptyLabel);
-        }
-
-        mWarningLines = warnings.values();
-        if (!mWarningLines.isEmpty())
-        {
-            mNotesLabel = new QLabel(this);
-            mNotesLabel->setTextFormat(Qt::RichText);
-            mNotesLabel->setWordWrap(true);
-            layout->addWidget(mNotesLabel);
         }
 
         // The review loop's Apply step lives here (MEGA-2.11 AC#7): Apply
@@ -196,7 +206,9 @@ namespace SyncPreview
         }
 
         // Row text: primary everywhere except the awaiting-approval rows
-        // (warning color), re-resolved over the stored marker.
+        // (warning color), re-resolved over the stored marker. The warning
+        // triangles (MEGA-2.12) need no re-resolution — they are a themed
+        // icon on the row, not text.
         for (int row = 0; row < mChangesTree->topLevelItemCount(); ++row)
         {
             QTreeWidgetItem* item = mChangesTree->topLevelItem(row);
@@ -205,18 +217,6 @@ namespace SyncPreview
                 : theme->getColor(QLatin1String("text-primary"));
             item->setForeground(0, QBrush(color));
             item->setForeground(1, QBrush(color));
-        }
-
-        if (mNotesLabel)
-        {
-            QStringList lines;
-            for (const QString& warning : mWarningLines)
-            {
-                lines << QStringLiteral("• %1").arg(warning.toHtmlEscaped());
-            }
-            mNotesLabel->setText(QStringLiteral("<span style=\"color:%2;\">%1</span>")
-                                     .arg(lines.join(QStringLiteral("<br/>")),
-                                          theme->getColor(QLatin1String("text-warning")).name()));
         }
 
         for (QPushButton* button : findChildren<QPushButton*>())

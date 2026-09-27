@@ -193,6 +193,19 @@
        </property>
       </column>
      </widget>
+     <widget class="QTreeWidget" name="decisionTree">
+      <property name="focusPolicy">
+       <enum>Qt::NoFocus</enum>
+      </property>
+      <property name="selectionMode">
+       <enum>QAbstractItemView::NoSelection</enum>
+      </property>
+      <column>
+       <property name="text">
+        <string>Decision</string>
+       </property>
+      </column>
+     </widget>
      <widget class="QTreeWidget" name="rightTree">
       <property name="alternatingRowColors">
        <bool>false</bool>
