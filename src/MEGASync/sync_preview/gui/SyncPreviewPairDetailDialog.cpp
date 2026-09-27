@@ -394,14 +394,19 @@ namespace SyncPreview
         for (QTreeWidget* tree : {mUi->leftTree, mUi->decisionTree, mUi->rightTree})
         {
             tree->setMinimumHeight(160);
-            // Per-row heights (MEGA-2.12): root rows carry extra spacing, so
-            // the uniform-height optimization must go.
             tree->setUniformRowHeights(false);
             // Zebra striping (MEGA-2.11 AC#4): the trees are line-locked
             // (same rows, same order), so the alternating tint — the same
             // surface token on all — makes corresponding rows trackable
             // across the panes and the decision column.
             tree->setAlternatingRowColors(true);
+            // EXPLICIT uniform row height on all three trees (MEGA-2.12
+            // round 4): left to font metrics, the panes' rows and the
+            // decision column's widget-pinned rows drift apart by a couple
+            // of pixels and the stripes desynchronize. A stylesheet item
+            // height makes every row in every tree exactly this tall.
+            tree->setStyleSheet(
+                QStringLiteral("QTreeWidget::item { height: %1px; }").arg(kRowHeight));
             // Pane lock-step, meld-style: scrolling or expanding/collapsing a
             // row moves the same row in the sibling views.
             connect(tree->verticalScrollBar(), &QScrollBar::valueChanged, this, [this, tree]()
@@ -446,21 +451,32 @@ namespace SyncPreview
             });
         }
 
-        // The decision column (MEGA-2.12): a narrow, headerless strip whose
-        // rows carry the three compact arrow buttons; no selection, no
-        // expansion chrome — its expansion follows the panes via the mirrors
-        // above. No indentation (setIndentation(0)): the arrows start at the
+        // The decision column (MEGA-2.12): a narrow strip whose rows carry
+        // the three compact arrow buttons; no selection, no expansion
+        // chrome — its expansion follows the panes via the mirrors above.
+        // No indentation (setIndentation(0)): the arrows start at the
         // cell's left edge. The width is pinned by the splitter below — a
         // plain setFixedWidth loses to the splitter's initial size
         // distribution (the column started wide and snapped lean only after
         // a manual resize, round-3 feedback).
         QTreeWidget* decisionTree = mUi->decisionTree;
         decisionTree->setFocusPolicy(Qt::NoFocus);
-        decisionTree->header()->hide();
         decisionTree->header()->setSectionResizeMode(kColPath, QHeaderView::Stretch);
         decisionTree->setIndentation(0);
         decisionTree->setMinimumWidth(kDecisionColumnWidth);
         decisionTree->setMaximumWidth(kDecisionColumnWidth);
+        // The blank header strip (MEGA-2.12 round 5): the panes show their
+        // column headers, so their first row starts one header height below
+        // the tree's top — with this header HIDDEN the column's rows and
+        // stripes sat one header height (~19px) above the panes' rows and
+        // never lined up. A blank, inert header keeps all three viewports'
+        // rows starting at the same y by construction; its height is synced
+        // to the panes' headers (syncDecisionHeaderHeight) after the first
+        // layout pass and on theme changes.
+        decisionTree->headerItem()->setText(kColPath, QString());
+        QHeaderView* decisionHeader = decisionTree->header();
+        decisionHeader->setSectionsClickable(false);
+        decisionHeader->setSectionsMovable(false);
 
         QSplitter* splitter = mUi->panesSplitter;
         splitter->setStretchFactor(0, 1);
@@ -472,7 +488,19 @@ namespace SyncPreview
         QTimer::singleShot(0, this, [this]()
         {
             mUi->panesSplitter->setSizes({1, kDecisionColumnWidth, 1});
+            // Header heights are final after the first layout pass: pin the
+            // decision column's blank header to the panes' header height so
+            // the three viewports' rows start at the same y (round 5).
+            syncDecisionHeaderHeight();
         });
+    }
+
+    void SyncPreviewPairDetailDialog::syncDecisionHeaderHeight()
+    {
+        // The decision column's blank header must be exactly as tall as the
+        // panes' headers, or its rows (and stripes) start offset from the
+        // panes' rows (MEGA-2.12 round 5).
+        mUi->decisionTree->header()->setFixedHeight(mUi->leftTree->header()->height());
     }
 
     void SyncPreviewPairDetailDialog::buildActionPanel()
@@ -636,6 +664,11 @@ namespace SyncPreview
                  stateText(PaneState::Modified), stateText(PaneState::New),
                  stateText(PaneState::Blocked), stateText(PaneState::Same),
                  stateText(PaneState::Missing)));
+
+        // Theme changes can re-size the headers (fonts differ per schema):
+        // keep the decision column's blank header pinned to the panes'
+        // header height so the stripes stay aligned (MEGA-2.12 round 5).
+        syncDecisionHeaderHeight();
     }
 
     void SyncPreviewPairDetailDialog::rebuild()
@@ -949,11 +982,10 @@ namespace SyncPreview
         mMidButtonsByPath.insert(row.relativePath, buttons);
 
         buttonsRow->setLayout(layout);
-        // The row widget's height is pinned to the item's size hint: an
-        // unpinned widget makes the middle tree's rows grow taller than
-        // the panes' rows, and the stripes desynchronize (MEGA-2.12 round 3).
-        // Every row is the same height — no root exceptions — so the stripes
-        // across the three trees stay in step.
+        // The row widget is pinned to the SAME enforced item height the
+        // stylesheet gives every tree's rows (setupPanes): without the pin
+        // the widget sizes itself and the middle tree's rows drift from the
+        // panes', desynchronizing the stripes (MEGA-2.12 round 4).
         buttonsRow->setFixedHeight(kRowHeight);
         item->setSizeHint(kColPath, QSize(0, kRowHeight));
         mUi->decisionTree->setItemWidget(item, kColPath, buttonsRow);

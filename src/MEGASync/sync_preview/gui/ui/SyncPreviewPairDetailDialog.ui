@@ -202,7 +202,7 @@
       </property>
       <column>
        <property name="text">
-        <string>Decision</string>
+        <string/>
        </property>
       </column>
      </widget>

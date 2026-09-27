@@ -9230,10 +9230,6 @@ Please, ensure that you don&apos;t use characters like &apos;\&apos; &apos;/&apo
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <source>Decision</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <source>removed</source>
         <translation type="unfinished"></translation>
     </message>

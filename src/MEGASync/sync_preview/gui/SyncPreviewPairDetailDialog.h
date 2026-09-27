@@ -62,6 +62,12 @@ namespace SyncPreview
 
     private:
         void setupPanes();
+        // The decision column's blank header strip (MEGA-2.12 round 5) is
+        // pinned to the panes' header height so all three trees' rows start
+        // at the same y: the panes' visible headers offset their rows, and
+        // the previously hidden header left the column's rows one header
+        // height (~19px) above the panes'.
+        void syncDecisionHeaderHeight();
         void buildActionPanel();
         void applyPanesPalette();
         void repopulate();

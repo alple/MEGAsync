@@ -4,7 +4,7 @@ title: Stage 2 Testing feedback round 3
 status: Testing
 assignee: []
 created_date: '2026-09-27 12:34'
-updated_date: '2026-09-27 14:05'
+updated_date: '2026-09-27 14:33'
 labels:
   - sync-preview
 milestone: Sync pre-commit review
@@ -72,6 +72,32 @@ Round-3 fixes (2026-09-27, tester feedback after round-2 build) — build + test
 **Middle column width coherence.** Root cause: `setFixedWidth` loses to QSplitter's initial size distribution — the splitter laid the column out wide from the tree's content size hint, and only after a manual resize did the fixed width clamp it (hence "snaps back lean"). Fix: min = max = 96px on the decision tree (coherent at every moment, resize can't move it) plus an explicit `splitter->setSizes({1, 96, 1})` on a zero-timer after the first layout pass, so the initial show is also lean.
 
 Note: with grouping reverted, the tester's original request 6 (visible root separation) is intentionally NOT satisfied — uniform rows per tester's "let's not do the groups". If wanted later, a safer approach (selection-independent, stripe-safe) can be discussed.
+---
+
+created: 2026-09-27 14:15
+---
+Round-4 fix (2026-09-27, tester: middle column stripes still not aligned) — build + tests green (939/136).
+
+**Root cause found this time.** The panes' row heights come from font metrics (state fonts can render a hair taller than 26px), while the middle column's rows were pinned to exactly 26px — two height regimes drifting by a few pixels per row, so the stripes never quite lined up even though all size hints said 26.
+
+**Fix:** one explicit row height for ALL THREE trees, enforced via stylesheet (`QTreeWidget::item { height: 26px; }` on left, middle, right alike) — every row in every tree is now the same height by the same mechanism, and the middle column's pinned row widgets match it exactly. Uniform-row-height setting is irrelevant to alignment now.
+
+`just run`: the stripes should now line up across left/middle/right — including when rows expand/collapse and when the window resizes.
+---
+
+created: 2026-09-27 14:33
+---
+Round-5 fix (2026-09-27, tester: middle column still misaligned) — build + tests green (939/136).
+
+**Root cause nailed by measuring the tester's screenshot itself** (pixel analysis of the PNG): the panes' row heights were already uniform — stripe period exactly 52px = 2 × 26px in all three trees, round 4's height fix works — but the decision column's stripes and buttons sat a constant ~19px ABOVE the pane rows (mid stripe onsets y=131/183/235… vs pane onsets y=150/202/254…; left and right panes agreed with each other exactly). ~19px = the panes' header height: the decision tree's header was hidden, so its viewport (row 0) started at the tree's top, one header height above the panes' rows, which start below their Name/Size/Modified header. A constant offset that isn't a multiple of the row height never lines up — no height regime could have fixed it. (Consistent tell: the middle column fit one extra partial row at the bottom — its Load-more text row visible where the panes showed their last stripe.)
+
+**Fix:** the decision tree's header is no longer hidden — it shows as a blank strip (the "Decision" label is cleared in the .ui), non-clickable/non-movable, height pinned at runtime to the left pane's header height (`syncDecisionHeaderHeight()`: after the first layout pass and on every theme change, since header fonts can differ per schema). All three viewports' rows now start at the same y by construction; combined with round 4's enforced uniform 26px, stripes and buttons line up across left/middle/right.
+
+Version: `VER_FORK_SUFFIX` → `-dev.4` per fork policy (new binary with new fork-side changes; the tester ran -dev.3).
+
+Diff confined to `sync_preview/` (.cpp, .h, .ui), the regenerated `translation.source.ts` (only the dropped "Decision" string) and `Version.h`; fake data only, nothing upstream-touched.
+
+**Notes for Testing (human eyes):** `just run` — the middle column now has a thin blank header strip matching the pane headers' chrome; every arrow-button row should sit exactly on its pane row with stripes in step, also while scrolling/expanding, after a window resize and after a theme switch. If anything is still off, a screenshot straight into this ticket helps — the last one was measurable down to the pixel.
 ---
 <!-- COMMENTS:END -->
 
